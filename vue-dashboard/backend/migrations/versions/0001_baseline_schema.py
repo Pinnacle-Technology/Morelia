@@ -30,6 +30,91 @@ def upgrade() -> None:
     op.create_index("ix_experiments_name", "experiments", ["name"], unique=False)
 
     op.create_table(
+        "influx_sink_profiles",
+        sa.Column("id", sa.String(64), primary_key=True),
+        sa.Column("name", sa.String(255, collation="NOCASE"), nullable=False),
+        sa.Column("current_revision", sa.Integer(), nullable=False),
+        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "current_revision > 0",
+            name="ck_influx_profiles_revision_positive",
+        ),
+        sa.UniqueConstraint("name", name="uq_influx_sink_profiles_name"),
+    )
+    op.create_index(
+        "ix_influx_sink_profiles_name",
+        "influx_sink_profiles",
+        ["name"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_influx_profiles_archived_name",
+        "influx_sink_profiles",
+        ["archived_at", "name"],
+        unique=False,
+    )
+
+    op.create_table(
+        "influx_sink_profile_revisions",
+        sa.Column("profile_id", sa.String(64), nullable=False),
+        sa.Column("revision", sa.Integer(), nullable=False),
+        sa.Column("config_schema_version", sa.Integer(), nullable=False),
+        sa.Column("content_hash", sa.String(64), nullable=False),
+        sa.Column("url", sa.String(2048), nullable=False),
+        sa.Column("org", sa.String(255), nullable=False),
+        sa.Column("bucket", sa.String(255), nullable=False),
+        sa.Column("write_token_env", sa.String(128), nullable=False),
+        sa.Column("read_token_env", sa.String(128), nullable=False),
+        sa.Column("observe_on_scheduler", sa.String(32), nullable=True),
+        sa.Column("buffer_max_age_seconds", sa.Float(), nullable=False),
+        sa.Column("buffer_max_bytes", sa.BigInteger(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "revision > 0",
+            name="ck_influx_profile_revisions_positive",
+        ),
+        sa.CheckConstraint(
+            "config_schema_version > 0",
+            name="ck_influx_profile_schema_version_positive",
+        ),
+        sa.CheckConstraint(
+            "buffer_max_age_seconds > 0",
+            name="ck_influx_profile_buffer_age_positive",
+        ),
+        sa.CheckConstraint(
+            "buffer_max_bytes > 0",
+            name="ck_influx_profile_buffer_bytes_positive",
+        ),
+        sa.CheckConstraint(
+            "observe_on_scheduler IS NULL OR observe_on_scheduler IN ('thread_pool', 'new_thread')",
+            name="ck_influx_profile_observe_scheduler",
+        ),
+        sa.CheckConstraint(
+            "length(content_hash) = 64",
+            name="ck_influx_profile_content_hash_length",
+        ),
+        sa.ForeignKeyConstraint(
+            ["profile_id"],
+            ["influx_sink_profiles.id"],
+            name="fk_influx_profile_revisions_profile",
+            ondelete="RESTRICT",
+        ),
+        sa.PrimaryKeyConstraint(
+            "profile_id",
+            "revision",
+            name="pk_influx_sink_profile_revisions",
+        ),
+    )
+    op.create_index(
+        "ix_influx_profile_revisions_content_hash",
+        "influx_sink_profile_revisions",
+        ["profile_id", "content_hash"],
+        unique=False,
+    )
+
+    op.create_table(
         "sessions",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("name", sa.String(120), nullable=False),
@@ -85,6 +170,63 @@ def upgrade() -> None:
         "sessions",
         ["creation_request_key"],
         unique=True,
+    )
+
+    op.create_table(
+        "session_sink_bindings",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("session_id", sa.Integer(), nullable=False),
+        sa.Column("flow_index", sa.Integer(), nullable=False),
+        sa.Column("sink_index", sa.Integer(), nullable=False),
+        sa.Column("sink_name", sa.String(255), nullable=False),
+        sa.Column("profile_id", sa.String(64), nullable=False),
+        sa.Column("profile_revision", sa.Integer(), nullable=False),
+        sa.Column("profile_content_hash", sa.String(64), nullable=False),
+        sa.Column("writer_parameters", sa.JSON(), nullable=False),
+        sa.Column("reader_parameters", sa.JSON(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.CheckConstraint("flow_index >= 0", name="ck_session_sink_bindings_flow_index"),
+        sa.CheckConstraint("sink_index >= 0", name="ck_session_sink_bindings_sink_index"),
+        sa.CheckConstraint(
+            "profile_revision > 0",
+            name="ck_session_sink_bindings_profile_revision",
+        ),
+        sa.CheckConstraint(
+            "length(profile_content_hash) = 64",
+            name="ck_session_sink_bindings_profile_hash_length",
+        ),
+        sa.ForeignKeyConstraint(
+            ["session_id"],
+            ["sessions.id"],
+            name="fk_session_sink_bindings_session",
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["profile_id", "profile_revision"],
+            [
+                "influx_sink_profile_revisions.profile_id",
+                "influx_sink_profile_revisions.revision",
+            ],
+            name="fk_session_sink_bindings_profile_revision",
+            ondelete="RESTRICT",
+        ),
+        sa.UniqueConstraint(
+            "session_id",
+            "flow_index",
+            "sink_index",
+            name="uq_session_sink_bindings_coordinate",
+        ),
+    )
+    op.create_index(
+        "ix_session_sink_bindings_session_id",
+        "session_sink_bindings",
+        ["session_id"],
+        unique=False,
     )
 
     op.create_table(
@@ -644,10 +786,20 @@ def downgrade() -> None:
         ("ix_incidents_session_id", "incidents"),
         ("ix_incidents_incident_id", "incidents"),
         ("ix_session_notes_session_created", "session_notes"),
+        ("ix_session_sink_bindings_session_id", "session_sink_bindings"),
+        (
+            "ix_influx_profile_revisions_content_hash",
+            "influx_sink_profile_revisions",
+        ),
+        ("ix_influx_profiles_archived_name", "influx_sink_profiles"),
+        ("ix_influx_sink_profiles_name", "influx_sink_profiles"),
     ):
         op.drop_index(index, table_name=table)
 
     for table in (
+        "session_sink_bindings",
+        "influx_sink_profile_revisions",
+        "influx_sink_profiles",
         "device_registrations",
         "session_template_dependencies",
         "session_templates",
