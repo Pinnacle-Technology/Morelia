@@ -9,9 +9,19 @@ environments or is secret comes from the *environment*, never hard-coded.
 """
 
 import os
+from ipaddress import ip_address
 from pathlib import Path
 
 _INSTANCE_DIR = Path(__file__).resolve().parent.parent / "instance"
+
+
+def _authorize_loopback_profile_management(request) -> bool:
+    """Use the existing localhost bind boundary for the local dev control plane."""
+
+    try:
+        return ip_address(request.remote_addr).is_loopback
+    except (ValueError, TypeError):
+        return False
 
 
 class Config:
@@ -245,6 +255,43 @@ class Config:
     SINK_DELIVERY_OUTBOX_BUSY_TIMEOUT_MILLISECONDS = int(
         os.environ.get("SINK_DELIVERY_OUTBOX_BUSY_TIMEOUT_MILLISECONDS", "5000")
     )
+    # ---- Influx sink-profile management ------------------------------------
+    # Mutating profile routes delegate to a deployment-supplied callable. No
+    # callable means deny: the application currently has no general user/role
+    # authentication layer that this feature could safely pretend to reuse.
+    INFLUX_SINK_PROFILE_AUTHORIZER = None
+    INFLUX_SINK_PROFILE_ALLOWED_SCHEMES = tuple(
+        value.strip().lower()
+        for value in os.environ.get(
+            "INFLUX_SINK_PROFILE_ALLOWED_SCHEMES",
+            "http,https",
+        ).split(",")
+        if value.strip()
+    )
+    # Both an exact hostname and every resolved address must be allowlisted.
+    # Empty defaults fail closed. Operators should keep these CIDRs narrow and
+    # align deployment egress rules with the same destinations.
+    INFLUX_SINK_PROFILE_ALLOWED_HOSTS = tuple(
+        value.strip()
+        for value in os.environ.get("INFLUX_SINK_PROFILE_ALLOWED_HOSTS", "").split(",")
+        if value.strip()
+    )
+    INFLUX_SINK_PROFILE_ALLOWED_NETWORKS = tuple(
+        value.strip()
+        for value in os.environ.get("INFLUX_SINK_PROFILE_ALLOWED_NETWORKS", "").split(",")
+        if value.strip()
+    )
+    INFLUX_SINK_PROFILE_PROBE_TIMEOUT_SECONDS = float(
+        os.environ.get("INFLUX_SINK_PROFILE_PROBE_TIMEOUT_SECONDS", "3.0")
+    )
+    INFLUX_SINK_PROFILE_PROBE_MAX_RESPONSE_BYTES = int(
+        os.environ.get("INFLUX_SINK_PROFILE_PROBE_MAX_RESPONSE_BYTES", "4096")
+    )
+    # Trusted resolver seam for controlled deployments and deterministic tests.
+    # The probe override is honored only while TESTING; production always uses
+    # the built-in address-pinned health transport.
+    INFLUX_SINK_PROFILE_RESOLVER = None
+    INFLUX_SINK_PROFILE_PROBE = None
     WATCHDOG_HARDWARE_LOCK_DIR = os.environ.get(
         "WATCHDOG_HARDWARE_LOCK_DIR", str(_INSTANCE_DIR / "watchdog-hardware-locks")
     )
@@ -334,6 +381,12 @@ class DevelopmentConfig(Config):
     """Local development: verbose errors, auto-reload-friendly."""
 
     DEBUG = True
+    # The current dashboard is explicitly a localhost-only control plane. This
+    # does not trust forwarding headers and is not a replacement for real user
+    # authentication if remote binding is ever enabled.
+    INFLUX_SINK_PROFILE_AUTHORIZER = staticmethod(
+        _authorize_loopback_profile_management
+    )
     # Relative SQLite paths are resolved under Flask's instance directory.
     # Source: https://flask-sqlalchemy.palletsprojects.com/en/stable/config/#connection-url-format
     SQLALCHEMY_DATABASE_URI = os.environ.get(
