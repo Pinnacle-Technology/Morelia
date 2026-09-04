@@ -392,3 +392,141 @@ def resolve_for_run(
         buffer_max_bytes=revision.buffer_max_bytes,
     )
 
+
+def revise(profile_id: str, *, expected_profile_revision: int, **patch) -> dict:
+    profile = _profile(profile_id)
+    if profile.archived_at is not None:
+        raise InfluxSinkProfileArchived("Influx sink profile is archived")
+    if profile.current_revision != expected_profile_revision:
+        raise StaleInfluxSinkProfileRevision("Influx sink profile revision is stale")
+    current = _revision(profile_id, expected_profile_revision)
+    values = _config_from_revision(current)
+    values.update(patch)
+    revision_values = _validated_values(values)
+    try:
+        profile, revision = _repo.append_revision(
+            profile_id=profile_id,
+            expected_revision=expected_profile_revision,
+            revision_values=revision_values,
+        )
+    except RevisionAdvanceFailed as exc:
+        db.session.expire_all()
+        latest = _profile(profile_id)
+        if latest.archived_at is not None:
+            raise InfluxSinkProfileArchived("Influx sink profile is archived") from exc
+        raise StaleInfluxSinkProfileRevision("Influx sink profile revision is stale") from exc
+    return _safe_profile(profile, revision)
+
+
+def archive(profile_id: str, *, expected_profile_revision: int) -> dict:
+    profile = _profile(profile_id)
+    if profile.current_revision != expected_profile_revision:
+        raise StaleInfluxSinkProfileRevision("Influx sink profile revision is stale")
+    if profile.archived_at is not None:
+        return _safe_profile(
+            profile,
+            _revision(profile.id, profile.current_revision),
+        )
+    try:
+        profile = _repo.archive(
+            profile_id=profile_id,
+            expected_revision=expected_profile_revision,
+        )
+    except ArchiveAdvanceFailed as exc:
+        db.session.expire_all()
+        latest = _profile(profile_id)
+        if latest.archived_at is not None and latest.current_revision == expected_profile_revision:
+            profile = latest
+        else:
+            raise StaleInfluxSinkProfileRevision("Influx sink profile revision is stale") from exc
+    return _safe_profile(profile, _revision(profile.id, profile.current_revision))
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, address: str, server_hostname: str, port: int, timeout: float):
+        super().__init__(address, port=port, timeout=timeout, context=ssl.create_default_context())
+        self._server_hostname = server_hostname
+
+    def connect(self) -> None:
+        self.sock = self._create_connection(
+            (self.host, self.port),
+            self.timeout,
+            self.source_address,
+        )
+        self.sock = self._context.wrap_socket(
+            self.sock,
+            server_hostname=self._server_hostname,
+        )
+
+
+def _pinned_probe(destination: ValidatedDestination, health_url: str, timeout: float) -> bool:
+    parts = urlsplit(health_url)
+    max_bytes = int(current_app.config.get("INFLUX_SINK_PROFILE_PROBE_MAX_RESPONSE_BYTES", 4096))
+    host_header = (
+        f"[{destination.hostname}]" if ":" in destination.hostname else destination.hostname
+    )
+    default_port = 443 if parts.scheme == "https" else 80
+    if destination.port != default_port:
+        host_header = f"{host_header}:{destination.port}"
+    path = parts.path or "/health"
+
+    for address in destination.addresses:
+        connection = None
+        try:
+            if parts.scheme == "https":
+                connection = _PinnedHTTPSConnection(
+                    address,
+                    destination.hostname,
+                    destination.port,
+                    timeout,
+                )
+            else:
+                connection = http.client.HTTPConnection(
+                    address,
+                    destination.port,
+                    timeout=timeout,
+                )
+            connection.request(
+                "GET",
+                path,
+                headers={"Host": host_header, "Accept": "application/json"},
+            )
+            response = connection.getresponse()
+            response.read(max_bytes + 1)
+            return 100 <= response.status <= 599
+        except (OSError, TimeoutError, ssl.SSLError, http.client.HTTPException):
+            continue
+        finally:
+            if connection is not None:
+                connection.close()
+    return False
+
+
+def test_revision(profile_id: str, revision_number: int) -> dict:
+    profile = _profile(profile_id)
+    if profile.archived_at is not None:
+        raise InfluxSinkProfileArchived("Influx sink profile is archived")
+    revision = _revision(profile_id, revision_number)
+    destination = validate_destination(revision.url)
+    health_url = f"{destination.url.rstrip('/')}/health"
+    timeout = float(current_app.config.get("INFLUX_SINK_PROFILE_PROBE_TIMEOUT_SECONDS", 3.0))
+    # The injectable transport is a deterministic test seam only. Production
+    # always uses the address-pinned transport below, so it cannot re-resolve a
+    # validated hostname between policy enforcement and connection.
+    configured_probe = (
+        current_app.config.get("INFLUX_SINK_PROFILE_PROBE") if current_app.testing else None
+    )
+    try:
+        reachable = (
+            bool(configured_probe(health_url, timeout))
+            if configured_probe is not None
+            else _pinned_probe(destination, health_url, timeout)
+        )
+    except Exception:  # Trusted deployment seam; never expose its details.
+        reachable = False
+    return {
+        "profile_id": profile.id,
+        "tested_revision": revision.revision,
+        "status": "reachable" if reachable else "unreachable",
+        "credentials_checked": False,
+    }
