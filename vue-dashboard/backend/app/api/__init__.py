@@ -11,6 +11,7 @@ from app.api.experiments import blp as experiments_blp
 from app.api.filesystem import blp as filesystem_blp
 from app.api.gaps import blp as gaps_blp
 from app.api.incidents import blp as incidents_blp
+from app.api.influx_sink_profiles import blp as influx_sink_profiles_blp
 from app.api.operations import blp as operations_blp
 from app.api.runtimes import blp as runtimes_blp
 from app.api.session_templates import blp as session_templates_blp
@@ -47,6 +48,7 @@ def register_routes(api, app):
     api.register_blueprint(session_runs_blp)
     api.register_blueprint(operations_blp)
     api.register_blueprint(incidents_blp)
+    api.register_blueprint(influx_sink_profiles_blp)
     api.register_blueprint(gaps_blp)
     api.register_blueprint(experiments_blp)
     api.register_blueprint(runtimes_blp)
