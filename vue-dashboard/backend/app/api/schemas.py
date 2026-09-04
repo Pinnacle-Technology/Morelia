@@ -11,7 +11,14 @@ business rules live in the service layer.
 
 from datetime import UTC, datetime
 
-from marshmallow import Schema, ValidationError, fields, validate, validates_schema
+from marshmallow import (
+    Schema,
+    ValidationError,
+    fields,
+    pre_load,
+    validate,
+    validates_schema,
+)
 
 from app.domain.enums import (
     DeviceClaimState,
@@ -118,6 +125,17 @@ class SinkLocationAssignmentSchema(Schema):
     sink_location = fields.String(required=True, validate=validate.Length(min=1))
 
 
+class SinkProfileAssignmentSchema(Schema):
+    """Exact immutable Influx profile revision selected for one sink index."""
+
+    sink_index = fields.Integer(required=True, validate=validate.Range(min=0))
+    sink_profile_id = fields.String(required=True, validate=validate.Length(min=1, max=64))
+    expected_profile_revision = fields.Integer(
+        required=True,
+        validate=validate.Range(min=1),
+    )
+
+
 class FlowAssignmentSchema(Schema):
     """The reviewed assignment for one template flow: one flow index with multiple sink indexes : location pairs."""
 
@@ -125,6 +143,10 @@ class FlowAssignmentSchema(Schema):
     device_config_id = fields.Integer(required=True)
     sink_locations = fields.List(
         fields.Nested(SinkLocationAssignmentSchema),
+        load_default=list,
+    )
+    sink_profiles = fields.List(
+        fields.Nested(SinkProfileAssignmentSchema),
         load_default=list,
     )
 
@@ -708,6 +730,161 @@ class ExperimentUpdateSchema(Schema):
     def validate_update(self, data, **kwargs):
         if not data:
             raise ValidationError("Provide name or description.")
+
+
+_LITERAL_SECRET_FIELDS = {
+    "authorization",
+    "credential",
+    "password",
+    "secret",
+    "token",
+    "api_token",
+    "write_token",
+    "read_token",
+}
+
+
+def _contains_literal_secret_field(value) -> bool:
+    if isinstance(value, dict):
+        return any(
+            str(key).lower() in _LITERAL_SECRET_FIELDS
+            or _contains_literal_secret_field(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, list):
+        return any(_contains_literal_secret_field(item) for item in value)
+    return False
+
+
+class _RejectLiteralInfluxSecretsSchema(Schema):
+    @pre_load
+    def reject_literal_secrets(self, data, **kwargs):
+        if _contains_literal_secret_field(data):
+            raise ValidationError("Literal credential fields are not accepted.")
+        return data
+
+
+class CreateInfluxSinkProfileSchema(_RejectLiteralInfluxSecretsSchema):
+    name = fields.String(required=True, validate=validate.Length(min=1, max=255))
+    url = fields.Url(required=True, schemes={"http", "https"}, relative=False)
+    org = fields.String(required=True, validate=validate.Length(min=1, max=255))
+    bucket = fields.String(required=True, validate=validate.Length(min=1, max=255))
+    write_token_env = fields.String(
+        required=True,
+        validate=validate.Regexp(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$"),
+    )
+    read_token_env = fields.String(
+        required=True,
+        validate=validate.Regexp(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$"),
+    )
+    observe_on_scheduler = fields.String(
+        allow_none=True,
+        load_default=None,
+        validate=validate.OneOf(["thread_pool", "new_thread"]),
+    )
+    buffer_max_age_seconds = fields.Float(
+        required=True,
+        validate=validate.Range(min=0, min_inclusive=False),
+    )
+    buffer_max_bytes = fields.Integer(
+        required=True,
+        validate=validate.Range(min=1),
+    )
+
+
+class CreateInfluxSinkProfileRevisionSchema(_RejectLiteralInfluxSecretsSchema):
+    expected_profile_revision = fields.Integer(
+        required=True,
+        validate=validate.Range(min=1),
+    )
+    url = fields.Url(schemes={"http", "https"}, relative=False)
+    org = fields.String(validate=validate.Length(min=1, max=255))
+    bucket = fields.String(validate=validate.Length(min=1, max=255))
+    write_token_env = fields.String(
+        validate=validate.Regexp(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$"),
+    )
+    read_token_env = fields.String(
+        validate=validate.Regexp(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$"),
+    )
+    observe_on_scheduler = fields.String(
+        allow_none=True,
+        validate=validate.OneOf(["thread_pool", "new_thread"]),
+    )
+    buffer_max_age_seconds = fields.Float(
+        validate=validate.Range(min=0, min_inclusive=False),
+    )
+    buffer_max_bytes = fields.Integer(validate=validate.Range(min=1))
+
+    @validates_schema
+    def validate_patch(self, data, **kwargs):
+        if set(data) == {"expected_profile_revision"}:
+            raise ValidationError("Provide at least one profile configuration field.")
+
+
+class ArchiveInfluxSinkProfileSchema(Schema):
+    expected_profile_revision = fields.Integer(
+        required=True,
+        validate=validate.Range(min=1),
+    )
+
+
+class InfluxSinkProfileListQuerySchema(Schema):
+    include_archived = fields.Boolean(load_default=False)
+    page = fields.Integer(load_default=1, validate=validate.Range(min=1))
+    page_size = fields.Integer(
+        load_default=50,
+        validate=validate.Range(min=1, max=100),
+    )
+
+
+class InfluxSinkProfileDestinationSchema(Schema):
+    url = fields.String(dump_only=True)
+    org = fields.String(dump_only=True)
+    bucket = fields.String(dump_only=True)
+
+
+class InfluxSinkProfileDeliverySchema(Schema):
+    observe_on_scheduler = fields.String(dump_only=True, allow_none=True)
+    buffer_max_age_seconds = fields.Float(dump_only=True)
+    buffer_max_bytes = fields.Integer(dump_only=True)
+
+
+class InfluxSinkProfileCredentialStateSchema(Schema):
+    write_configured = fields.Boolean(dump_only=True)
+    read_configured = fields.Boolean(dump_only=True)
+
+
+class InfluxSinkProfileSchema(Schema):
+    id = fields.String(dump_only=True)
+    name = fields.String(dump_only=True)
+    revision = fields.Integer(dump_only=True)
+    content_hash = fields.String(dump_only=True)
+    state = fields.String(dump_only=True)
+    destination = fields.Nested(InfluxSinkProfileDestinationSchema, dump_only=True)
+    delivery = fields.Nested(InfluxSinkProfileDeliverySchema, dump_only=True)
+    credentials = fields.Nested(InfluxSinkProfileCredentialStateSchema, dump_only=True)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+    archived_at = fields.DateTime(dump_only=True, allow_none=True)
+
+
+class InfluxSinkProfilePaginationSchema(Schema):
+    page = fields.Integer(dump_only=True)
+    page_size = fields.Integer(dump_only=True)
+    total_items = fields.Integer(dump_only=True)
+    total_pages = fields.Integer(dump_only=True)
+
+
+class InfluxSinkProfilePageSchema(Schema):
+    items = fields.List(fields.Nested(InfluxSinkProfileSchema), dump_only=True)
+    pagination = fields.Nested(InfluxSinkProfilePaginationSchema, dump_only=True)
+
+
+class InfluxSinkProfileProbeSchema(Schema):
+    profile_id = fields.String(dump_only=True)
+    tested_revision = fields.Integer(dump_only=True)
+    status = fields.String(dump_only=True)
+    credentials_checked = fields.Boolean(dump_only=True)
 
 
 class AssignmentCandidateSchema(Schema):
