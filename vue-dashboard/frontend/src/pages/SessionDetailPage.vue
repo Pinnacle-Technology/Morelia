@@ -14,6 +14,7 @@ import BaseCard from "../components/BaseCard.vue";
 import CollapsibleSection from "../components/CollapsibleSection.vue";
 import CommandErrorDialog from "../components/CommandErrorDialog.vue";
 import GuardedDialog from "../components/GuardedDialog.vue";
+import GrafanaView from "../components/GrafanaView.vue";
 import RatRunIndicator from "../components/RatRunIndicator.vue";
 import SessionNotesList from "../components/SessionNotesList.vue";
 import SessionFlowBar from "../components/SessionFlowBar.vue";
@@ -916,16 +917,24 @@ function normalizeSessionId(id) {
   return digits ? Number(digits) : id;
 }
 
-/** Plot integration remains deferred until its backend contract is available. */
 const plotTargets = computed(() => {
-  return [];
+  const flows = detail.value?.session?.device_flows;
+  if (!Array.isArray(flows)) return [];
+  return flows.flatMap((flow, flowIndex) =>
+    (Array.isArray(flow?.sinks) ? flow.sinks : []).flatMap((sink, sinkIndex) => {
+      const sinkType = sink?.sink_type ?? sink?.type;
+      return String(sinkType ?? "").toLowerCase() === "influx"
+        ? [{ id: `${flowIndex}:${sinkIndex}` }]
+        : [];
+    }),
+  );
 });
 
 const visibleTabs = computed(() => [
   { id: "overview", label: "Overview" },
   // Streams is intentionally hidden until the dedicated view is ready.
   // { id: "streams", label: "Streams" },
-  ...(plotTargets.value.length ? [{ id: "plot", label: "Live Plot" }] : []),
+  ...(plotTargets.value.length ? [{ id: "plot", label: "M4 comparison" }] : []),
   { id: "recovery", label: "Recovery" },
   { id: "incidents", label: "Issues & Data Gaps" },
   { id: "activity", label: "Activity" },
@@ -1179,9 +1188,8 @@ const tabTones = computed(() => ({
       </div>
 
       <div v-else-if="activeTab === 'plot'" class="flow-list">
-        <BaseCard class="detail-panel">
-          <h3>Live Plot</h3>
-          <p>Live Plot integration is deferred until its backend transport contract is available.</p>
+        <BaseCard class="detail-panel detail-panel--wide">
+          <GrafanaView :session-id="props.sessionId" />
         </BaseCard>
       </div>
 
