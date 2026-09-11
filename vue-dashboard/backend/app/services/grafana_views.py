@@ -272,3 +272,98 @@ def _m4_controls(
     selected_ch = tuple(value for value in _CH_OPTIONS if value in requested_ch)
     return selected_detail, selected_ttl, selected_ch
 
+
+def describe(
+    session_id: int,
+    *,
+    config: Mapping,
+    target_id: str | None = None,
+    data_detail: str | None = None,
+    show_ttl: list[str] | tuple[str, ...] | None = None,
+    show_ch: list[str] | tuple[str, ...] | None = None,
+) -> dict:
+    """Return the M4 comparison graph descriptor without mutating run state."""
+
+    session = sessions.get(session_id)
+    retry_after = max(1, int(config.get("GRAFANA_RETRY_AFTER_SECONDS", 10)))
+    base_url = _safe_http_url(config.get("GRAFANA_PUBLIC_URL"))
+    expected_destination = _configured_destination(config)
+    uid = str(config.get("GRAFANA_DASHBOARD_UID") or "").strip()
+    slug = str(config.get("GRAFANA_DASHBOARD_SLUG") or "").strip()
+    try:
+        panel_id = int(config.get("GRAFANA_PANEL_ID", 2))
+    except (TypeError, ValueError):
+        panel_id = 0
+    if not base_url or expected_destination is None or not uid or not slug or panel_id < 1:
+        return _base_response(
+            state="not_configured",
+            message="The M4 comparison Grafana view is not configured by this deployment.",
+            retry_after=retry_after,
+        )
+
+    targets = _targets(session, expected_destination)
+    if not targets:
+        return _base_response(
+            state="not_applicable",
+            message=(
+                "This run has no Influx destination connected to the M4 comparison "
+                "Grafana datasource."
+            ),
+            retry_after=retry_after,
+        )
+
+    selected = targets[0]
+    if target_id is not None:
+        selected = next((item for item in targets if item["id"] == target_id), None)
+        if selected is None:
+            raise InvalidGrafanaSelection("Unknown Grafana target for this session.")
+    selected_data_detail, selected_ttl, selected_ch = _m4_controls(
+        data_detail, show_ttl, show_ch
+    )
+
+    response = _base_response(state="ready", message=None, retry_after=retry_after)
+    response.update(
+        {
+            "targets": targets,
+            "selected_target_id": selected["id"],
+            "selected_data_detail": selected_data_detail,
+            "selected_ttl": list(selected_ttl),
+            "selected_ch": list(selected_ch),
+        }
+    )
+
+    health_url = _safe_http_url(config.get("GRAFANA_HEALTH_URL"))
+    if health_url is None:
+        health_url = f"{base_url}/api/health"
+    timeout = max(0.05, float(config.get("GRAFANA_HEALTH_TIMEOUT_SECONDS", 1.0)))
+    probe: Callable[[str, float], bool] = _default_health_probe
+    configured_probe = config.get("GRAFANA_HEALTH_PROBE")
+    if bool(config.get("TESTING")) and callable(configured_probe):
+        probe = configured_probe
+    try:
+        available = bool(probe(health_url, timeout))
+    except Exception:
+        available = False
+    if not available:
+        response.update(
+            {
+                "state": "unavailable",
+                "message": "Grafana is currently unavailable. Acquisition is unaffected.",
+            }
+        )
+        return response
+
+    embed_url, open_url = _panel_urls(
+        base_url=base_url,
+        uid=uid,
+        slug=slug,
+        panel_id=panel_id,
+        bucket=expected_destination[2],
+        measurement=expected_destination[3],
+        device=selected["device"],
+        data_detail=selected_data_detail,
+        show_ttl=selected_ttl,
+        show_ch=selected_ch,
+    )
+    response.update({"embed_url": embed_url, "open_url": open_url})
+    return response
