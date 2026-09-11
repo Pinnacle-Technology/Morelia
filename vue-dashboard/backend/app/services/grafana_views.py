@@ -208,3 +208,67 @@ def _targets(session, expected_destination: tuple[str, str, str, str]) -> list[d
             )
     return targets
 
+
+def _panel_urls(
+    *,
+    base_url: str,
+    uid: str,
+    slug: str,
+    panel_id: int,
+    bucket: str,
+    measurement: str,
+    device: str,
+    data_detail: str,
+    show_ttl: tuple[str, ...],
+    show_ch: tuple[str, ...],
+) -> tuple[str, str]:
+    variables = {
+        "orgId": "1",
+        "from": "now-30s",
+        "to": "now",
+        "refresh": "500ms",
+        "var-bucket": bucket,
+        "var-measurement": measurement,
+        "var-device": device,
+        "var-data_detail": data_detail,
+        "var-show_ttl": list(show_ttl) or [_NO_TTL],
+        "var-show_ch": list(show_ch) or [_NO_CH],
+    }
+    embed_query = urlencode(
+        {**variables, "panelId": str(panel_id), "kiosk": ""}, doseq=True
+    )
+    open_query = urlencode({**variables, "viewPanel": str(panel_id)}, doseq=True)
+    return (
+        f"{base_url}/d-solo/{uid}/{slug}?{embed_query}",
+        f"{base_url}/d/{uid}/{slug}?{open_query}",
+    )
+
+
+def _m4_controls(
+    data_detail: str | None,
+    show_ttl: list[str] | tuple[str, ...] | None,
+    show_ch: list[str] | tuple[str, ...] | None,
+) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    selected_detail = data_detail or _DEFAULT_DATA_DETAIL
+    if selected_detail not in _DATA_DETAIL_OPTIONS:
+        raise InvalidGrafanaSelection("Unsupported Grafana data detail.")
+
+    requested_ttl = tuple(show_ttl) if show_ttl is not None else _TTL_OPTIONS
+    if _NO_TTL in requested_ttl:
+        if len(requested_ttl) != 1:
+            raise InvalidGrafanaSelection("No-TTL cannot be combined with TTL channels.")
+        requested_ttl = ()
+    if any(value not in _TTL_OPTIONS for value in requested_ttl):
+        raise InvalidGrafanaSelection("Unsupported Grafana TTL channel.")
+    selected_ttl = tuple(value for value in _TTL_OPTIONS if value in requested_ttl)
+
+    requested_ch = tuple(show_ch) if show_ch is not None else _CH_OPTIONS
+    if _NO_CH in requested_ch:
+        if len(requested_ch) != 1:
+            raise InvalidGrafanaSelection("No-CH cannot be combined with CH channels.")
+        requested_ch = ()
+    if any(value not in _CH_OPTIONS for value in requested_ch):
+        raise InvalidGrafanaSelection("Unsupported Grafana CH channel.")
+    selected_ch = tuple(value for value in _CH_OPTIONS if value in requested_ch)
+    return selected_detail, selected_ttl, selected_ch
+
