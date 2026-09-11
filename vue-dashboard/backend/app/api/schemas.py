@@ -1048,6 +1048,61 @@ class SessionStatusSnapshotSchema(Schema):
     telemetry_diagnostics = fields.Raw(allow_none=True)
 
 
+class GrafanaViewQuerySchema(Schema):
+    target_id = fields.String(
+        load_default=None,
+        allow_none=True,
+        validate=validate.Length(min=1, max=32),
+    )
+    data_detail = fields.String(
+        load_default=None,
+        allow_none=True,
+        validate=validate.OneOf(
+            ["raw", "auto", "10ms", "25ms", "50ms", "100ms", "250ms", "500ms", "1s"]
+        ),
+    )
+    show_ttl = fields.List(
+        fields.String(validate=validate.OneOf(["__none__", "TTL1", "TTL2", "TTL3", "TTL4"])),
+        load_default=None,
+        allow_none=True,
+    )
+    show_ch = fields.List(
+        fields.String(validate=validate.OneOf(["__none__", "CH0", "CH1", "CH2"])),
+        load_default=None,
+        allow_none=True,
+    )
+
+
+class GrafanaViewTargetSchema(Schema):
+    id = fields.String(required=True)
+    label = fields.String(required=True)
+    device = fields.String(required=True)
+    channels = fields.List(fields.String(), required=True)
+
+
+class GrafanaViewSchema(Schema):
+    state = fields.String(
+        required=True,
+        validate=validate.OneOf(
+            ["ready", "unavailable", "not_configured", "not_applicable"]
+        ),
+    )
+    scope = fields.String(required=True)
+    notice = fields.String(required=True)
+    targets = fields.List(fields.Nested(GrafanaViewTargetSchema), required=True)
+    selected_target_id = fields.String(allow_none=True)
+    data_detail_options = fields.List(fields.String(), required=True)
+    selected_data_detail = fields.String(required=True)
+    ttl_options = fields.List(fields.String(), required=True)
+    selected_ttl = fields.List(fields.String(), required=True)
+    ch_options = fields.List(fields.String(), required=True)
+    selected_ch = fields.List(fields.String(), required=True)
+    embed_url = fields.Url(allow_none=True)
+    open_url = fields.Url(allow_none=True)
+    retry_after_seconds = fields.Integer(required=True)
+    message = fields.String(allow_none=True)
+
+
 class DiscoveredDeviceSchema(Schema):
     type = fields.Enum(DeviceType, by_value=True)
     port = fields.String()
