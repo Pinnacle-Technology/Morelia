@@ -245,6 +245,37 @@ class Config:
     SINK_DELIVERY_OUTBOX_BUSY_TIMEOUT_MILLISECONDS = int(
         os.environ.get("SINK_DELIVERY_OUTBOX_BUSY_TIMEOUT_MILLISECONDS", "5000")
     )
+    # ---- Morelia M4 Grafana view ------------------------------------------
+    # Grafana is deployment infrastructure, not a destination supplied by a
+    # session template.  Empty connection settings fail closed and leave the
+    # acquisition path completely unaffected.
+    GRAFANA_PUBLIC_URL = os.environ.get("GRAFANA_PUBLIC_URL", "").strip()
+    GRAFANA_HEALTH_URL = os.environ.get("GRAFANA_HEALTH_URL", "").strip()
+    GRAFANA_DASHBOARD_UID = os.environ.get(
+        "GRAFANA_DASHBOARD_UID", "morelia-m4-comparison"
+    ).strip()
+    GRAFANA_DASHBOARD_SLUG = os.environ.get(
+        "GRAFANA_DASHBOARD_SLUG", "morelia-m4-comparison"
+    ).strip()
+    GRAFANA_PANEL_ID = int(os.environ.get("GRAFANA_PANEL_ID", "2"))
+    GRAFANA_HEALTH_TIMEOUT_SECONDS = float(
+        os.environ.get("GRAFANA_HEALTH_TIMEOUT_SECONDS", "1.0")
+    )
+    GRAFANA_RETRY_AFTER_SECONDS = int(
+        os.environ.get("GRAFANA_RETRY_AFTER_SECONDS", "10")
+    )
+    # These non-secret values describe the single read-only Influx datasource
+    # wired into the administrator-provisioned dashboard.  A run is graphable
+    # only when its frozen writer destination matches all four values.
+    GRAFANA_INFLUX_URL = os.environ.get("GRAFANA_INFLUX_URL", "").strip()
+    GRAFANA_INFLUX_ORG = os.environ.get("GRAFANA_INFLUX_ORG", "").strip()
+    GRAFANA_INFLUX_BUCKET = os.environ.get("GRAFANA_INFLUX_BUCKET", "").strip()
+    GRAFANA_INFLUX_MEASUREMENT = os.environ.get(
+        "GRAFANA_INFLUX_MEASUREMENT", "default-measurement"
+    ).strip()
+    # Deterministic test seam.  Production always uses the bounded, no-redirect
+    # health transport implemented by app.services.grafana_views.
+    GRAFANA_HEALTH_PROBE = None
     WATCHDOG_HARDWARE_LOCK_DIR = os.environ.get(
         "WATCHDOG_HARDWARE_LOCK_DIR", str(_INSTANCE_DIR / "watchdog-hardware-locks")
     )
