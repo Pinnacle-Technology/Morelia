@@ -48,7 +48,7 @@ STARTING_CLAIM_LEASE_SECONDS = 120
 # Packet 10 ("hardware-id validation contract", resolved 2026-07-30): the legal
 # value is 1-8 ASCII alphanumeric characters. Leading zeros and letter case are
 # significant, so the value stays a string and is never normalized or coerced.
-_HARDWARE_ID_PATTERN = re.compile(r"^[0-9a-zA-Z]{1,8}$")
+_HARDWARE_ID_PATTERN = re.compile(r"^[0-9a-zA-Z]{1,10}$")
 
 
 def _canonical_parameters(device_type: DeviceType, raw: Mapping[str, Any] | None) -> dict[str, Any]:

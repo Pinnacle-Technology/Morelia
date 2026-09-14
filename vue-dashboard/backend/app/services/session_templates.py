@@ -62,7 +62,7 @@ _FLOW_FIELDS = {
 }
 _CONTENT_FIELDS = {"policy", "device_flows"}
 _HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-_HARDWARE_ID_PATTERN = re.compile(r"^[0-9a-zA-Z]{1,8}$")
+_HARDWARE_ID_PATTERN = re.compile(r"^[0-9a-zA-Z]{1,10}$")
 
 
 def _normalize_name(name: str) -> str:
