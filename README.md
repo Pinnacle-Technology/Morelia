@@ -19,7 +19,34 @@
 
 Morelia is a free, open-source Python application programming interface (API) for Pinnacle Technology, Inc. data acquisition POD devices. Morelia core modules, usage examples, and supporting documentation can be found here on GitHub and are available freely under the New BSD License. 
 
-Currently, the API supports 8206-HR, 8401-HR, 8229, 8480-SC, and 8274-D POD devices. In the future, we will offer support to other Pinnacle devices. 
+Currently, the API supports 8206 (legacy 4100), 8206-HR, 8401-HR, 8229, 8480-SC, and 8274-D POD devices. In the future, we will offer support to other Pinnacle devices.
+
+### Legacy 8206 acquisition and Qt plotting
+
+Use `from Morelia.Devices import Pod8206` for the original device (TYPE 1).
+`Pod8206HR` is for TYPE 48. To try the live three-channel Qt plot from this checkout:
+
+```bash
+pip install -e ".[plot]"
+python examples/device_examples/8206_scripts/8206_plot_stream.py --com-port COM9 --sample-rate 400 --preamp-gain 100
+```
+
+For direct FTDI USB, also install `.[d2xx]` and replace `--com-port COM9` with
+`--device SERIAL` (or a device index). Close the plot window to stop acquisition.
+The default baud rate is 9600; use `--baudrate` if the connection requires another rate.
+
+The legacy sample rates are 200, 400, 600, 800, 1000, and 2000 Hz. Set
+`pod.sample_rate` while stopped; this preserves the existing filters and gains.
+`pod.read_configuration()` returns `(eeg_lowpass, eeg_gain_index, emg_lowpass,
+emg_gain_index, sample_rate)`, and `pod.configure(...)` writes those five values.
+Lowpass values use hundredths of Hz. Gain indices 0–7 select multipliers
+1, 2, 4, 5, 8, 10, 16, and 20. The preamp gain must match the attached hardware.
+
+`DataPacket8206.ch0`, `.ch1`, and `.ch2` contain tuples of samples in microvolts;
+`.sample_count` gives the batch length. The reader handles variable-length
+BINARY packets and separate TTL control events. `PlotSink` supports these
+batches with per-sample timing; other device-specific sinks have not been
+extended for the legacy 8206.
 
 You can find extensive documentation for the package [here](https://pinnacle-technology-inc.github.io/Morelia).
 
