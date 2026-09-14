@@ -18,7 +18,7 @@ from functools import partial
 from contextlib import ExitStack
 
 #local imports
-from Morelia.Devices import Pod8206HR, Pod8401HR, Pod8274D, AcquisitionDevice
+from Morelia.Devices import Pod8206, Pod8206HR, Pod8401HR, Pod8274D, AcquisitionDevice
 
 from Morelia.packet import ControlPacket
 
@@ -52,6 +52,26 @@ def _scheduler_for(spec):  # noqa: C901
 #rate (# total packets/time elapsed). this way, our timestamps are more evenly distributed
 #and more closely resemble the time at which they were read from the device (as opposed
 #to things like transfer and buffering delays by the OS/USB messign with things.
+def _timestamp_8206_batches(sample_rate: int):
+    """Timestamp the first sample of each legacy batch using its sample count."""
+    def operator(source):
+        def subscribe(observer, scheduler=None):
+            start = None
+            samples = 0
+
+            def on_next(packet):
+                nonlocal start, samples
+                if start is None:
+                    start = time.time_ns()
+                observer.on_next((start + round(samples * 1e9 / sample_rate), packet))
+                samples += packet.sample_count
+
+            return source.subscribe(on_next, observer.on_error, observer.on_completed,
+                                    scheduler=scheduler)
+        return rx.create(subscribe)
+    return operator
+
+
 def _timestamp_via_adjusted_sample_rate(starting_sample_rate: int):
     def _timestamp_via_adjusted_sample_rate_operator(source):
         def subscribe(observer, scheduler=None):
@@ -211,7 +231,8 @@ def get_data(duration: float, manual_stop_event: Event, pod: AcquisitionDevice, 
     data = device.pipe(
            do_action(lambda item: put_read_packet(item) if isinstance(item, ControlPacket) else None),
            ops.filter(lambda i: not isinstance(i, ControlPacket)), #todo: more strict filtering
-           _timestamp_via_adjusted_sample_rate(pod.sample_rate)
+           (_timestamp_8206_batches(pod.sample_rate) if isinstance(pod, Pod8206)
+            else _timestamp_via_adjusted_sample_rate(pod.sample_rate))
        )
      
     # create a function that outputs a connectable observable.

@@ -23,7 +23,7 @@ from typing import Any
 
 from Morelia.Stream.sink import SinkInterface
 from Morelia.packet.data import DataPacket
-from Morelia.Devices import Pod8206HR, Pod8401HR, Pod8274D, AcquisitionDevice
+from Morelia.Devices import Pod8206, Pod8206HR, Pod8401HR, Pod8274D, AcquisitionDevice
 
 
 # Control and data message types for the plot queue
@@ -104,7 +104,10 @@ class PlotSink(SinkInterface):
         self._decimate_step = max(1, effective_rate // max_display_rate)
         self._decimate_counter = 0
 
-        if isinstance(self._pod, Pod8206HR):
+        if isinstance(self._pod, Pod8206):
+            self._channel_names = channel_names if channel_names is not None else ("EEG1", "EEG2", "EMG")
+            self._get_values = lambda packet: list(zip(packet.ch0, packet.ch1, packet.ch2))
+        elif isinstance(self._pod, Pod8206HR):
             self._channel_names = channel_names if channel_names is not None else ("EEG1", "EEG2", "EEG3/EMG")
             self._get_values = _channel_values_8206
         elif isinstance(self._pod, Pod8401HR):
@@ -164,6 +167,22 @@ class PlotSink(SinkInterface):
             pass
 
     def flush(self, timestamp: int, packet: DataPacket) -> None:
+        if isinstance(self._pod, Pod8206):
+            # Skip/decimate individual samples, not whole USB batches.
+            for i, values in enumerate(zip(packet.ch0, packet.ch1, packet.ch2)):
+                if self._skip_remaining:
+                    self._skip_remaining -= 1
+                    continue
+                self._decimate_counter += 1
+                if self._decimate_counter < self._decimate_step:
+                    continue
+                self._decimate_counter = 0
+                ts = timestamp + round(i * 1e9 / self._pod.sample_rate)
+                self._buffer.append((ts, values))
+                if len(self._buffer) >= self._chunk_samples:
+                    self._flush_buffer()
+            return
+
         # Skip initial unstable samples
         if self._skip_remaining > 0:
             self._skip_remaining -= 1
