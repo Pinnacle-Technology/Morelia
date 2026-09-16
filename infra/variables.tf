@@ -57,6 +57,12 @@ variable "influxdb_token" {
   sensitive = true
 }
 
+variable "influxdb_read_token" {
+  type        = string
+  description = "Bucket-scoped read-only InfluxDB token used only by Grafana"
+  sensitive   = true
+}
+
 variable "influxdb_org" {
   type = string
   description = "Organization for InfluxDB"
