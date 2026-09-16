@@ -261,9 +261,22 @@ class PortIO :
             return(None)
         serial_port = self._serial_inst
 
-        if serial_port.timeout != timeout_sec:
-            serial_port.timeout = timeout_sec
+        #Updated logic to reduce refresh time on Window machine
+        need_timeout_update = serial_port.timeout != timeout_sec #boolean flag on whether we should update or not
 
+        #For Windows, ignore the differences from the 4th floating point
+        # eg. 19.99998 = 19.99999
+        if (platform.system() == "Windows" 
+            and isinstance(serial_port, Serial)
+            and serial_port.timeout is not None
+            and timeout_sec is not None
+            and serial_port.timeout > 0
+            and timeout_sec > 0):
+            need_timeout_update = (max(1, int(serial_port.timeout * 1000)) != max(1, int(timeout_sec*1000)))
+        #only update when the flag is true 
+        if need_timeout_update:
+            serial_port.timeout = timeout_sec
+            
         r = serial_port.read(numBytes)
         if len(r) < numBytes:
             raise TimeoutError('[!] Timeout for serial read after '+str(timeout_sec)+' seconds.')
