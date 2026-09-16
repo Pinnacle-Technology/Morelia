@@ -234,20 +234,20 @@ class Pod8206HR(AcquisitionDevice) :
     # Fixed size of 8206HR binary data packet: STX(1) + cmd(4) + payload(8) + checksum(2) + ETX(1) = 16 bytes
     _STREAMING_PACKET_LEN = 16
 
-    def _read_exactly_n_streaming(self, n: int, timeout_sec: float) -> bytes | None:
-        """Read exactly n bytes, accumulating partial reads until we have n or hit timeout."""
-        data = b''
-        deadline = time.perf_counter() + timeout_sec
-        while len(data) < n:
-            remaining = max(0.01, deadline - time.perf_counter())
-            if remaining <= 0:
-                return None
-            chunk = self._port.read(n - len(data), remaining)
-            if chunk:
-                data = data + chunk
-            elif len(data) == 0:
-                return None
-        return data if len(data) == n else None
+    # def _read_exactly_n_streaming(self, n: int, timeout_sec: float) -> bytes | None:
+    #     """Read exactly n bytes, accumulating partial reads until we have n or hit timeout."""
+    #     data = b''
+    #     deadline = time.perf_counter() + timeout_sec
+    #     while len(data) < n:
+    #         remaining = max(0.01, deadline - time.perf_counter())
+    #         if remaining <= 0:
+    #             return None
+    #         chunk = self._port.read(n - len(data), remaining)
+    #         if chunk:
+    #             data = data + chunk
+    #         elif len(data) == 0:
+    #             return None
+    #     return data if len(data) == n else None
 
     def read_pod_packet_streaming(self, timeout_sec: float = 0.1, validate_checksum: bool = True):
         """Read one packet (data or control) using a single read(16) when aligned. Use in streaming mode for higher throughput.
@@ -262,8 +262,8 @@ class Pod8206HR(AcquisitionDevice) :
             raise TypeError("PortIO object does not exist!")
         n = Pod8206HR._STREAMING_PACKET_LEN
         while True:
-            data = self._read_exactly_n_streaming(n, timeout_sec)
-            if data is None:
+            data = self._port.read(n, timeout_sec)
+            if data is None or len(data) < n:
                 raise TimeoutError("No data received from device within timeout (streaming read)")
             if data[0:1] != PodPacket.STX:
                 while True:
@@ -272,8 +272,8 @@ class Pod8206HR(AcquisitionDevice) :
                         raise TimeoutError("No data received from device within timeout (streaming sync)")
                     if b == PodPacket.STX:
                         break
-                rest = self._read_exactly_n_streaming(n - 1, timeout_sec)
-                if rest is None:
+                rest = self._port.read(n - 1, timeout_sec)
+                if rest is None or len(rest) < n - 1:
                     raise TimeoutError("No data received from device within timeout (streaming read after sync)")
                 data = b + rest
             if data[-1:] != PodPacket.ETX:
