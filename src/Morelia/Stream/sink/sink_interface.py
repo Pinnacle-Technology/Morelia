@@ -10,7 +10,6 @@ __email__       = 'sales@pinnaclet.com'
 import abc
 from typing import Any
 from Morelia.packet.data import DataPacket
-from Morelia.Devices import Pod8206HR, Pod8401HR, Pod8274D
 
 class SinkInterface(metaclass=abc.ABCMeta):
     """

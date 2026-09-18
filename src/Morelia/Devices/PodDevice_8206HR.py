@@ -232,64 +232,76 @@ class Pod8206HR(AcquisitionDevice) :
     # Fixed size of 8206HR binary data packet: STX(1) + cmd(4) + payload(8) + checksum(2) + ETX(1) = 16 bytes
     _STREAMING_PACKET_LEN = 16
 
-    def _read_exactly_n_streaming(self, n: int, timeout_sec: float) -> bytes | None:
-        """Read exactly n bytes, accumulating partial reads until we have n or hit timeout."""
-        data = b''
-        deadline = time.perf_counter() + timeout_sec
-        while len(data) < n:
-            remaining = max(0.01, deadline - time.perf_counter())
-            if remaining <= 0:
-                return None
-            chunk = self._port.read(n - len(data), remaining)
-            if chunk:
-                data = data + chunk
-            elif len(data) == 0:
-                return None
-        return data if len(data) == n else None
+    def __enter__(self):
+        # A restarted stream must not inherit a fragment from a previous session.
+        self._stream_receive_buffer = bytearray()
+        return super().__enter__()
 
     def read_pod_packet_streaming(self, timeout_sec: float = 0.1, validate_checksum: bool = True):
-        """Read one packet (data or control) using a single read(16) when aligned. Use in streaming mode for higher throughput.
+        """Read mixed control/data packets, retaining fragments across timeouts.
 
-        When a fixed-size block is a complete data packet (16 bytes, ends with ETX), returns DataPacket8206HR.
-        When the block starts with STX but does not end with ETX (e.g. control packet), reads to ETX, parses as
-        ControlPacket, and returns it so the pipeline can deliver it to read_queue for mixed traffic.
-        Accumulates partial reads so driver returning fewer than 16 bytes does not cause timeout.
-        Raises TimeoutError if no data in timeout_sec.
+        Inspect the five-byte header before choosing the frame length. Binary4
+        payloads may contain STX/ETX bytes; only their fixed terminator is framing.
+        A short STREAM acknowledgement is returned without waiting for data.
+        One deadline bounds all reads, including resynchronization.
         """
         if self._port is None:
             raise TypeError("PortIO object does not exist!")
-        n = Pod8206HR._STREAMING_PACKET_LEN
+        if not hasattr(self, "_stream_receive_buffer"):
+            self._stream_receive_buffer = bytearray()
+        buf = self._stream_receive_buffer
+        deadline = time.perf_counter() + timeout_sec
+        read = getattr(self._port, "read_partial", None)
+        if not callable(read):
+            read = self._port.read  # D2XX already returns partial blocks.
+        read_available = getattr(self._port, "read_available", None)
+
+        def fill(size):
+            while len(buf) < size:
+                remaining = deadline - time.perf_counter()
+                if remaining <= 0:
+                    raise TimeoutError("Incomplete 8206HR packet (streaming read)")
+                chunk = (read_available(4096, remaining) if callable(read_available)
+                         else read(size - len(buf), remaining))
+                if not chunk:
+                    raise TimeoutError("No data received from 8206HR (streaming read)")
+                buf.extend(chunk)
+
         while True:
-            data = self._read_exactly_n_streaming(n, timeout_sec)
-            if data is None:
-                raise TimeoutError("No data received from device within timeout (streaming read)")
-            if data[0:1] != PodPacket.STX:
-                while True:
-                    b = self._port.read(1, timeout_sec)
-                    if b is None or len(b) == 0:
-                        raise TimeoutError("No data received from device within timeout (streaming sync)")
-                    if b == PodPacket.STX:
-                        break
-                rest = self._read_exactly_n_streaming(n - 1, timeout_sec)
-                if rest is None:
-                    raise TimeoutError("No data received from device within timeout (streaming read after sync)")
-                data = b + rest
-            if data[-1:] != PodPacket.ETX:
-                # Variable-length packet (e.g. control) - read to ETX and try to deliver as ControlPacket
-                while data[-1:] != PodPacket.ETX:
-                    b = self._port.read(1, timeout_sec)
-                    if b is None or len(b) == 0:
-                        raise TimeoutError("No data received from device within timeout (streaming read to ETX)")
-                    data = data + b
-                if validate_checksum and not self._validate_checksum(data):
-                    continue  # discard bad packet and retry
-                try:
-                    return self._control_packet_factory(data)
-                except Exception:
-                    continue  # not a valid control packet, discard and retry
-            if validate_checksum and not self._validate_checksum(data):
-                raise Exception("Bad checksum for binary POD packet read (streaming).")
-            return DataPacket8206HR(data, self._preamp_gain)
+            fill(1)
+            if buf[0] != 2:
+                del buf[0]
+                continue
+            fill(5)
+            try:
+                command = int(bytes(buf[1:5]), 16)
+            except ValueError:
+                del buf[0]
+                continue
+            if command == 180:
+                size = self._STREAMING_PACKET_LEN
+                fill(size)
+                if buf[size - 1] != 3:
+                    del buf[0]
+                    raise ValueError("Invalid 8206HR binary terminator")
+            else:
+                # Control packets have ASCII payloads and an ETX terminator.
+                while 3 not in buf[5:]:
+                    if len(buf) >= 4096:
+                        del buf[0]
+                        raise ValueError("Oversized 8206HR control packet")
+                    fill(len(buf) + 1)
+                size = buf.index(3, 5) + 1
+            raw = bytes(buf[:size])
+            if validate_checksum and not self._validate_checksum(raw):
+                # A false header may overlap the next valid frame. Retain the
+                # remaining bytes so resynchronization can find that frame.
+                del buf[0]
+                raise ValueError("Bad checksum for 8206HR streaming packet")
+            del buf[:size]
+            if command == 180:
+                return DataPacket8206HR(raw, self._preamp_gain)
+            return self._control_packet_factory(raw)
 
     def get_dict(self):
         d = {

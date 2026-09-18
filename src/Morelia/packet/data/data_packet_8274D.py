@@ -66,6 +66,13 @@ class DataPacket8274D(DataPacket):
                 self._ch7.append(sample_volts)
 
     @property
+    def packet_counter(self) -> int:
+        """16-bit little-endian EEG batch sequence following the binary header."""
+        if len(self._raw_packet) < self._min_length:
+            raise ValueError("Truncated 8274D data packet")
+        return int.from_bytes(self._raw_packet[12:14], "little")
+
+    @property
     def ch5(self) -> List[int]:
         """:return: Values list from channel 5."""
         return self._ch5

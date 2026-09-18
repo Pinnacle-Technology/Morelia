@@ -69,6 +69,13 @@ class DataPacket8401HR(DataPacket):
         self._ttl4 = None
 
     @property
+    def packet_counter(self) -> int:
+        """Candidate 8-bit sequence byte; streaming verifies it before use."""
+        if len(self._raw_packet) < self._min_length:
+            raise ValueError("Truncated 8401HR data packet")
+        return self._raw_packet[5]
+
+    @property
     def ch0(self) -> int:
         """:return: Value read from channel 0."""
         if self._ch0 is None:

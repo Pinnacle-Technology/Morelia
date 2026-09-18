@@ -16,50 +16,20 @@ except ImportError:
     from typing_extensions import Self
 
 from Morelia.Stream.sink import SinkInterface
-from Morelia.Devices import AcquisitionDevice, Pod8206HR, Pod8401HR, Pod8274D
+from Morelia.Stream.device_layout import resolve_layout
+from Morelia.Devices import AcquisitionDevice
 from Morelia.packet.data import DataPacket
 
 
 class UDPSink(SinkInterface):    
     """Stream data over UDP to a destination host/port.
 
-    Send-only UDP sink: one datagram per sample (or per batch for batch-capable
-    devices). Payload is a simple binary format (little-endian):
+    Send-only UDP sink: one datagram per sample for single-sample devices, or
+    one datagram per packet for batched devices (8206 / 8274D). Payload is
+    little-endian binary derived from the shared stream layout:
 
-    - Pod8206HR: 8-byte timestamp followed by 3 channel floats
-    - Pod8401HR: 8-byte timestamp followed by 4 channel floats
-    - Pod8274D: 8-byte timestamp + 16-bit sample count + batch of 40, 3 channel floats
-
-    Works on Windows, WSL, and Linux.
-
-    PACKET FORMATS:
-    Pod8206HR:
-        <Qfff>
-        - Q: uint64 timestamp (8 bytes)
-        - fff: 3 float32 channel values
-        Total: 20 bytes
-
-    Pod8401HR:
-        <Qffff>
-        - Q: uint64 timestamp (8 bytes)
-        - ffff: 4 float32 channel values
-        Total: 24 bytes
-
-    Pod8274D (batch of 40 samples, 3 channels per sample):
-        <QH + N × (fff)>
-        - Q: uint64 timestamp (8 bytes)
-        - H: uint16 sample count (40)
-        - fff: 3 float32 channel values per sample (channels 5–7)
-        Total: 490 bytes
-
-        Each batch is formed by zipping channel lists:
-            (ch5[i], ch6[i], ch7[i]) for i in range(N)
-
-    BEHAVIOR:
-    - One UDP datagram is emitted per flush().
-    - UDP is connectionless and does not guarantee delivery or ordering.
-    - No retransmission or buffering is performed.
-    - Intended for low-latency streaming of acquisition data.
+    - 3 analog channels: ``<Qfff>`` per sample (or batch header ``<QH>`` + N×``fff``)
+    - 4 analog channels: ``<Qffff>`` per sample
 
     :param port: Destination port (required).
     :param pod: POD device data is being streamed from.
@@ -79,6 +49,12 @@ class UDPSink(SinkInterface):
         self._pod = pod
         self._socket: socket.socket | None = None
         self.observe_on_scheduler = observe_on_scheduler
+        self._layout = resolve_layout(pod, profile="analog")
+        n = len(self._layout.analog_attrs)
+        if n not in (3, 4):
+            raise ValueError(f"UDPSink supports 3 or 4 analog channels, got {n}")
+        self._sample_fmt = "<Q" + ("f" * n)
+        self._body_fmt = "<" + ("f" * n)
 
     @property
     def host(self) -> str:
@@ -115,35 +91,20 @@ class UDPSink(SinkInterface):
             print(f"UDPSink flush error: {e}", file=sys.stderr)
 
     def _pack_payload(self, timestamp: int, packet: DataPacket) -> bytes | None:
-        """Pack (timestamp, packet) into little-endian bytes. One datagram per sample."""
-        if isinstance(self._pod, Pod8206HR):
-            return struct.pack(
-                '<Qfff',
-                timestamp,
-                float(packet.ch0),
-                float(packet.ch1),
-                float(packet.ch2),
-            )
-        if isinstance(self._pod, Pod8401HR):
-            return struct.pack(
-                '<Qffff',
-                timestamp,
-                float(packet.ch0),
-                float(packet.ch1),
-                float(packet.ch2),
-                float(packet.ch3),
-            )
-        elif isinstance(self._pod, Pod8274D):
-            header = struct.pack("<QH", timestamp, len(packet.ch5))
+        """Pack (timestamp, packet) into little-endian bytes."""
+        samples = self._layout.expand(timestamp, packet)
+        if not samples:
+            return None
 
+        if self._layout.batched:
+            header = struct.pack("<QH", timestamp, len(samples))
             body = b"".join(
-                struct.pack("<fff", ch5, ch6, ch7)
-                for (ch5, ch6, ch7) in zip(packet.ch5, packet.ch6, packet.ch7)
+                struct.pack(self._body_fmt, *values) for _ts, values in samples
             )
-
             return header + body
-        
-        return None
+
+        ts, values = samples[0]
+        return struct.pack(self._sample_fmt, ts, *values)
 
     def get_dict(self) -> dict:
         return {

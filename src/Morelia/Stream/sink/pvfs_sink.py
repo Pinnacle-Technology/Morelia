@@ -8,7 +8,6 @@ __copyright__   = 'Copyright (c) 2024, Thresa Kelly'
 __email__       = 'sales@pinnaclet.com'
 
 import logging
-import math
 import multiprocessing as mp
 import os
 import sys
@@ -28,8 +27,9 @@ except ImportError:
     from typing_extensions import Self
 
 from Morelia.Stream.sink import SinkInterface
+from Morelia.Stream.device_layout import resolve_layout
 from Morelia.packet.data import DataPacket
-from Morelia.Devices import Pod8206HR, Pod8401HR, Pod8274D, AcquisitionDevice
+from Morelia.Devices import AcquisitionDevice
 
 _PVFS_IMPORT_ERROR = None
 try:
@@ -142,7 +142,7 @@ class PvfsSink(SinkInterface):
 
     Creates a PVFS file with experiment.db3 and indexed channel files (.index / .idat).
     Index timestamps are written in absolute time (seconds since epoch).
-    Supports Pod8206HR (EEG1, EEG2, EEG3/EMG) and Pod8401HR (preamp channels only).
+    Supports Pod8206, Pod8206HR, Pod8401HR, and Pod8274D via the shared stream layout.
 
     :param file_path: Path to the .pvfs file to create.
     :param pod: POD device data is being streamed from.
@@ -168,23 +168,9 @@ class PvfsSink(SinkInterface):
             raise RuntimeError(msg) from _PVFS_IMPORT_ERROR
         self._file_path = file_path
         self._pod = pod
-
-        if isinstance(self._pod, Pod8206HR):
-            self._channels = ('EEG1', 'EEG2', 'EEG3/EMG')
-            self._units = ('uV', 'uV', 'uV')
-        elif isinstance(self._pod, Pod8401HR):
-            preamp_channel_names = (
-                list(Pod8401HR.get_channel_map_for_preamp_device(self._pod.preamp).values())
-                if self._pod.preamp is not None
-                else ['A', 'B', 'C', 'D']
-            )
-            self._channels = tuple(preamp_channel_names)
-            self._units = ('uV',) * len(preamp_channel_names)
-        elif isinstance(self._pod, Pod8274D):
-            self._channels = ('Ch5', 'Ch6', 'Ch7')
-            self._units = ('uV', 'uV', 'uV')
-        else:
-            raise ValueError(f'Device "{self._pod.device_name}" is not supported by PvfsSink.')
+        self._layout = resolve_layout(pod, profile="analog")
+        self._channels = self._layout.channel_names
+        self._units = self._layout.units
 
         self._buffer = [ [] for _ in self._channels ]
         self._pvfs_data: PvfsDataFile | None = None
@@ -308,25 +294,9 @@ class PvfsSink(SinkInterface):
         if self._use_writer_process:
             if self._writer_queue is None:
                 return
-            if isinstance(self._pod, Pod8206HR):
-                ch0 = float(packet.ch0)
-                ch1 = float(packet.ch1)
-                ch2 = float(packet.ch2)
-                if math.isnan(ch0) or math.isinf(ch0): ch0 = 0.0
-                if math.isnan(ch1) or math.isinf(ch1): ch1 = 0.0
-                if math.isnan(ch2) or math.isinf(ch2): ch2 = 0.0
-                vals = (ch0, ch1, ch2)
-            elif isinstance(self._pod, Pod8401HR):
-                vals = (float(packet.ch0), float(packet.ch1), float(packet.ch2), float(packet.ch3))
-            elif isinstance(self._pod, Pod8274D):
-                ch5 = float(packet.ch5)
-                ch6 = float(packet.ch6)
-                ch7 = float(packet.ch7)
-                vals = (ch5, ch6, ch7)
-            else:
-                return
             try:
-                self._writer_queue.put_nowait(vals)
+                for _ts, values in self._layout.expand(timestamp, packet):
+                    self._writer_queue.put_nowait(values)
             except Exception:
                 pass
             return
@@ -336,29 +306,9 @@ class PvfsSink(SinkInterface):
 
         sample_rate = float(self._pod.sample_rate) if self._pod.sample_rate else 400.0
 
-        if isinstance(self._pod, Pod8206HR):
-            ch0_val = float(packet.ch0)
-            ch1_val = float(packet.ch1)
-            ch2_val = float(packet.ch2)
-            if math.isnan(ch0_val) or math.isinf(ch0_val):
-                ch0_val = 0.0
-            if math.isnan(ch1_val) or math.isinf(ch1_val):
-                ch1_val = 0.0
-            if math.isnan(ch2_val) or math.isinf(ch2_val):
-                ch2_val = 0.0
-            self._buffer[0].append(ch0_val)
-            self._buffer[1].append(ch1_val)
-            self._buffer[2].append(ch2_val)
-        elif isinstance(self._pod, Pod8401HR):
-            self._buffer[0].append(float(packet.ch0))
-            self._buffer[1].append(float(packet.ch1))
-            self._buffer[2].append(float(packet.ch2))
-            self._buffer[3].append(float(packet.ch3))
-        elif isinstance(self._pod, Pod8274D):
-            for (ch5, ch6, ch7) in zip(packet.ch5, packet.ch6, packet.ch7):
-                self._buffer[0].append(ch5)
-                self._buffer[1].append(ch6)
-                self._buffer[2].append(ch7)
+        for _ts, values in self._layout.expand(timestamp, packet):
+            for i, value in enumerate(values):
+                self._buffer[i].append(value)
 
         if len(self._buffer[0]) >= int(sample_rate):
             self._write_buffer_to_pvfs()

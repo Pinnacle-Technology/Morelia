@@ -21,6 +21,7 @@ from contextlib import ExitStack
 from Morelia.Devices import Pod8206, Pod8206HR, Pod8401HR, Pod8274D, AcquisitionDevice
 
 from Morelia.packet import ControlPacket
+from Morelia.Stream.timing import timestamp_with_counters
 
 import reactivex as rx
 from reactivex import operators as ops
@@ -53,7 +54,12 @@ def _scheduler_for(spec):  # noqa: C901
 #and more closely resemble the time at which they were read from the device (as opposed
 #to things like transfer and buffering delays by the OS/USB messign with things.
 def _timestamp_8206_batches(sample_rate: int):
-    """Timestamp the first sample of each legacy batch using its sample count."""
+    """Timestamp legacy batches at the assigned sample rate.
+
+    The 8206 has no packet sequence counter. Its sample_count is only the
+    received batch length, not a hardware acquisition counter. Keep this fixed
+    rate path separate from counter-based loss detection used by other devices.
+    """
     def operator(source):
         def subscribe(observer, scheduler=None):
             start = None
@@ -147,26 +153,47 @@ def _stream_from_pod_device(pod: AcquisitionDevice, duration: float, manual_stop
     # Use fixed-size streaming read when available (1-2 read() per packet instead of many) for higher throughput
     read_fn = getattr(pod, "read_pod_packet_streaming", None)
     use_streaming = callable(read_fn)
-    stream_timeout_sec = 0.2  # allow time for partial reads (e.g. 8206) and USB scheduling; still detects stall
+    stream_timeout_sec = 0.2  # polling interval, not the threshold for a stalled stream
+    stall_warning_sec = 2.0
 
     def _stream_from_pod_device_observable(observer, scheduler) -> None:
         timeout_message_shown = False  # only print first timeout so we don't forget it's there
+        received_data = False
+        startup_grace_sec = 2.0 if isinstance(pod, Pod8206HR) else 0.0
         with pod:
             stream_start_time : float = time.perf_counter()
+            last_data_time = stream_start_time
             while time.perf_counter()-stream_start_time < duration and not manual_stop_event.is_set():
 
                 try:
                     if use_streaming:
-                        observer.on_next(read_fn(timeout_sec=stream_timeout_sec, validate_checksum=False))
+                        packet = read_fn(timeout_sec=stream_timeout_sec,
+                                         validate_checksum=isinstance(pod, Pod8206HR))
                     else:
-                        observer.on_next(pod.read_pod_packet())
+                        packet = pod.read_pod_packet()
+                    if not isinstance(packet, ControlPacket):
+                        received_data = True
+                        last_data_time = time.perf_counter()
+                        timeout_message_shown = False
+                    observer.on_next(packet)
+                except TimeoutError as e:
+                    # Waiting for a complete frame does not establish packet loss.
+                    # Keep short reads for responsiveness while hardware starts.
+                    if manual_stop_event.is_set():
+                        continue
+                    now = time.perf_counter()
+                    if now - stream_start_time >= duration:
+                        continue
+                    if not received_data and now - stream_start_time < startup_grace_sec:
+                        continue
+                    if received_data and now - last_data_time < stall_warning_sec:
+                        continue
+                    if not timeout_message_shown:
+                        state = "Waiting for first data packet" if not received_data else "Waiting for streaming data"
+                        print(f"{state}: {e}")
+                        timeout_message_shown = True
                 except Exception as e:
-                    if type(e).__name__ == "TimeoutError" and timeout_message_shown:
-                        pass  # suppress after first timeout message
-                    else:
-                        print(f"Dropped packet due to {type(e).__name__}: {e}")
-                        if type(e).__name__ == "TimeoutError":
-                            timeout_message_shown = True
+                    print(f"Dropped packet due to {type(e).__name__}: {e}")
                     #traceback.print_exc()
                     continue
         # After exiting "with pod": __exit__ has run (STREAM 0 sent, read buffer drained).
@@ -188,7 +215,7 @@ def make_packet_putter(read_queue):
     return put_read_packet
 
 def get_data(duration: float, manual_stop_event: Event, pod: AcquisitionDevice, sinks) -> None: 
-    """Streams data from the POD device. The data drops about every 1 second.
+    """Streams data from the POD device.
     Streaming will continue until a "stop streaming" packet is recieved. 
 
     :param duration: How long to stream data for.
@@ -232,6 +259,7 @@ def get_data(duration: float, manual_stop_event: Event, pod: AcquisitionDevice, 
            do_action(lambda item: put_read_packet(item) if isinstance(item, ControlPacket) else None),
            ops.filter(lambda i: not isinstance(i, ControlPacket)), #todo: more strict filtering
            (_timestamp_8206_batches(pod.sample_rate) if isinstance(pod, Pod8206)
+            else timestamp_with_counters(pod) if isinstance(pod, (Pod8206HR, Pod8401HR, Pod8274D))
             else _timestamp_via_adjusted_sample_rate(pod.sample_rate))
        )
      

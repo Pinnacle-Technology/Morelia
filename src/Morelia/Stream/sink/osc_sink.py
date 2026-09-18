@@ -15,35 +15,18 @@ except ImportError:
     from typing_extensions import Self
 
 from Morelia.Stream.sink import SinkInterface
-from Morelia.Devices import AcquisitionDevice, Pod8206HR, Pod8401HR, Pod8274D
+from Morelia.Stream.device_layout import resolve_layout
+from Morelia.Devices import AcquisitionDevice
 from Morelia.packet.data import DataPacket
 
 class OSCSink(SinkInterface):    
     """
     Streams acquisition data as Open Sound Control (OSC) messages over UDP.
 
-    This sink converts packets produced by a supported acquisition device into
-    OSC messages and transmits them to a configurable host and port using the
-    python-osc library. The OSC address and message payload are determined by
-    the connected device type.
-
-    Supported devices:
-        - Pod8206HR
-        - Pod8401HR
-        - Pod8274D
-
-    Packet format:
-        - Pod8206HR:
-            [timestamp, ch0, ch1, ch2]
-
-        - Pod8401HR:
-            [timestamp, ch0, ch1, ch2, ch3]
-
-        - Pod8274D:
-            [timestamp, ch5..., ch6..., ch7...]
-
-    The sink is intended for real-time streaming to applications that support
-    OSC, such as Bonsai or other OSC-compatible software.
+    Channel values come from the shared stream layout (analog profile).
+    Single-sample devices send ``[timestamp, *channel_values]``.
+    Batched devices send one message per packet:
+    ``[timestamp, *ch0_samples, *ch1_samples, *ch2_samples]`` (flattened).
 
     :param port: UDP port on the destination host to send OSC messages to.
     :param pod: POD device whose streamed packets will be converted to OSC messages.
@@ -74,6 +57,7 @@ class OSCSink(SinkInterface):
         self._pod = pod
         self._address = address
         self.observe_on_scheduler = observe_on_scheduler
+        self._layout = resolve_layout(pod, profile="analog")
 
         self._client: SimpleUDPClient | None = None
 
@@ -102,43 +86,18 @@ class OSCSink(SinkInterface):
             return
 
         try:
-            if isinstance(self._pod, Pod8206HR):
+            if self._layout.batched:
+                # Preserve prior 8274-style payload: timestamp + flattened channel lists.
+                flat: list[float] = [int(timestamp)]
+                for series in self._layout.analog_packet_values(packet):
+                    flat.extend(float(x) for x in series)
+                self._client.send_message(self._address, flat)
+                return
+
+            for ts, values in self._layout.expand(timestamp, packet):
                 self._client.send_message(
                     self._address,
-                    [
-                        int(timestamp),
-                        float(packet.ch0),
-                        float(packet.ch1),
-                        float(packet.ch2),
-                    ],
-                )
-
-            elif isinstance(self._pod, Pod8401HR):
-                self._client.send_message(
-                    self._address,
-                    [
-                        int(timestamp),
-                        float(packet.ch0),
-                        float(packet.ch1),
-                        float(packet.ch2),
-                        float(packet.ch3),
-                    ],
-                )
-
-            elif isinstance(self._pod, Pod8274D):
-                self._client.send_message(
-                    self._address,
-                    [
-                        int(timestamp),
-                        *[float(x) for x in packet.ch5],
-                        *[float(x) for x in packet.ch6],
-                        *[float(x) for x in packet.ch7],
-                    ],
-                )
-
-            else:
-                raise TypeError(
-                    f"Unsupported POD type: {type(self._pod).__name__}"
+                    [int(ts), *[float(v) for v in values]],
                 )
 
         except Exception as e:
