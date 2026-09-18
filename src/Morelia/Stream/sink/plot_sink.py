@@ -16,14 +16,15 @@ __license__     = 'New BSD License'
 __copyright__   = 'Copyright (c) 2024, Thresa Kelly'
 __email__       = 'sales@pinnaclet.com'
 
-import math
 import multiprocessing as mp
+import math
 from collections import deque
 from typing import Any
 
 from Morelia.Stream.sink import SinkInterface
+from Morelia.Stream.device_layout import resolve_layout
 from Morelia.packet.data import DataPacket
-from Morelia.Devices import Pod8206, Pod8206HR, Pod8401HR, Pod8274D, AcquisitionDevice
+from Morelia.Devices import AcquisitionDevice
 
 
 # Control and data message types for the plot queue
@@ -47,23 +48,6 @@ _SKIP_INITIAL_SAMPLES = 10
 # Max effective sample rate sent to the plot (decimate above this to avoid lag)
 _DEFAULT_MAX_DISPLAY_RATE = 2000
 
-
-def _channel_values_8206(packet: DataPacket) -> list[tuple[float, ...]]:
-    ch0 = float(packet.ch0) if not (math.isnan(packet.ch0) or math.isinf(packet.ch0)) else 0.0
-    ch1 = float(packet.ch1) if not (math.isnan(packet.ch1) or math.isinf(packet.ch1)) else 0.0
-    ch2 = float(packet.ch2) if not (math.isnan(packet.ch2) or math.isinf(packet.ch2)) else 0.0
-    return [ (ch0, ch1, ch2) ]
-
-
-def _channel_values_8401(packet: DataPacket) -> list[tuple[float, ...]]:
-    ch0 = float(packet.ch0)
-    ch1 = float(packet.ch1)
-    ch2 = float(packet.ch2)
-    ch3 = float(packet.ch3)
-    return [ (ch0, ch1, ch2, ch3) ]
-
-def _channel_values_8274(packet: DataPacket) -> list[tuple[float, ...]]:
-    return list(zip(packet.ch5, packet.ch6, packet.ch7))
 
 class PlotSink(SinkInterface):
     """Stream data to a live EEG-style plot via a shared queue.
@@ -89,6 +73,7 @@ class PlotSink(SinkInterface):
         self._queue = queue
         self._pod = pod
         self._source_id = source_id if source_id is not None else getattr(pod, "device_name", str(id(pod)))
+        self._layout = resolve_layout(pod, profile="analog")
 
         cached_rate = getattr(pod, "_sample_rate", None)
         if cached_rate is not None:
@@ -104,31 +89,7 @@ class PlotSink(SinkInterface):
         self._decimate_step = max(1, effective_rate // max_display_rate)
         self._decimate_counter = 0
 
-        if isinstance(self._pod, Pod8206):
-            self._channel_names = channel_names if channel_names is not None else ("EEG1", "EEG2", "EMG")
-            self._get_values = lambda packet: list(zip(packet.ch0, packet.ch1, packet.ch2))
-        elif isinstance(self._pod, Pod8206HR):
-            self._channel_names = channel_names if channel_names is not None else ("EEG1", "EEG2", "EEG3/EMG")
-            self._get_values = _channel_values_8206
-        elif isinstance(self._pod, Pod8401HR):
-            if channel_names is not None:
-                self._channel_names = channel_names
-            else:
-                labels = getattr(self._pod, "channel_labels", None)
-                if labels is not None:
-                    self._channel_names = labels
-                else:
-                    preamp_map = Pod8401HR.get_channel_map_for_preamp_device(self._pod.preamp)
-                    if preamp_map is not None:
-                        self._channel_names = tuple(preamp_map.values())
-                    else:
-                        self._channel_names = ("A", "B", "C", "D")
-            self._get_values = _channel_values_8401
-        elif isinstance(self._pod, Pod8274D):
-            self._channel_names = channel_names if channel_names is not None else ("Ch5", "Ch6", "Ch7")
-            self._get_values = _channel_values_8274
-        else:
-            raise ValueError(f'Device "{getattr(self._pod, "device_name", self._pod)}" is not supported by PlotSink.')
+        self._channel_names = channel_names if channel_names is not None else self._layout.channel_names
 
         self._buffer: list[tuple[int, tuple[float, ...]]] = []
         self._skip_remaining = _SKIP_INITIAL_SAMPLES
@@ -167,57 +128,18 @@ class PlotSink(SinkInterface):
             pass
 
     def flush(self, timestamp: int, packet: DataPacket) -> None:
-        if isinstance(self._pod, Pod8206):
-            # Skip/decimate individual samples, not whole USB batches.
-            for i, values in enumerate(zip(packet.ch0, packet.ch1, packet.ch2)):
-                if self._skip_remaining:
-                    self._skip_remaining -= 1
-                    continue
-                self._decimate_counter += 1
-                if self._decimate_counter < self._decimate_step:
-                    continue
-                self._decimate_counter = 0
-                ts = timestamp + round(i * 1e9 / self._pod.sample_rate)
-                self._buffer.append((ts, values))
-                if len(self._buffer) >= self._chunk_samples:
-                    self._flush_buffer()
-            return
-
-        # Skip initial unstable samples
-        if self._skip_remaining > 0:
-            self._skip_remaining -= 1
-            return
-
-        # Decimation
-        self._decimate_counter += 1
-        if self._decimate_counter < self._decimate_step:
-            return
-        self._decimate_counter = 0
-
-        # Extract values (DEVICE-SPECIFIC)
-        if isinstance(self._pod, Pod8206HR):
-            values = _channel_values_8206(packet)
-            self._buffer.append((timestamp, values[0]))
-
-        elif isinstance(self._pod, Pod8401HR):
-            values = _channel_values_8401(packet)
-            self._buffer.append((timestamp, values[0]))
-
-        elif isinstance(self._pod, Pod8274D):
-            values = _channel_values_8274(packet)
-
-            sample_period_ns = int(1e9 / self._pod.sample_rate)
-
-            for i, value in enumerate(values):
-                ts = timestamp + i * sample_period_ns
-                self._buffer.append((ts, value))
-
-        else:
-            return
-
-        # Chunk flush
-        if len(self._buffer) >= self._chunk_samples:
-            self._flush_buffer()
+        # Skip/decimate individual samples (including those inside USB/BT batches).
+        for ts, values in self._layout.expand(timestamp, packet):
+            if self._skip_remaining:
+                self._skip_remaining -= 1
+                continue
+            self._decimate_counter += 1
+            if self._decimate_counter < self._decimate_step:
+                continue
+            self._decimate_counter = 0
+            self._buffer.append((ts, values))
+            if len(self._buffer) >= self._chunk_samples:
+                self._flush_buffer()
 
     def get_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -419,10 +341,15 @@ class PlotDisplay:
                     idx += 1
                     continue
                 t_ds, y_ds = _downsample(t, y, _DISPLAY_MAX_POINTS)
-                self._curves[idx].setData(t_ds, y_ds)
+                self._curves[idx].setData(t_ds, y_ds, connect="finite")
                 # Y-axis hysteresis: only update range when data exceeds current bounds
-                data_min = min(y_ds)
-                data_max = max(y_ds)
+                finite_y = [value for value in y_ds if math.isfinite(value)]
+                if not finite_y:
+                    # Still update the curve (clear stale data), but retain the range.
+                    idx += 1
+                    continue
+                data_min = min(finite_y)
+                data_max = max(finite_y)
                 pad = max(_Y_PAD_MIN, (data_max - data_min) * _Y_PAD_FRAC) if data_max > data_min else _Y_PAD_MIN
                 cur_range = self._y_ranges[idx] if idx < len(self._y_ranges) else None
                 if cur_range is None:

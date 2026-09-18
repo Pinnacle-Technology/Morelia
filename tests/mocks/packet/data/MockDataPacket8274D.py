@@ -65,8 +65,9 @@ class MockDataPacket8274D(MockPacket):
 
     NUM_SAMPLES = 40 # Number of samples per packet of data from device
 
-    def __init__(self, ch5: List=None, ch6: List=None, ch7: List=None, seed: int=None):
+    def __init__(self, ch5: List=None, ch6: List=None, ch7: List=None, seed: int=None, packet_number: int=1234):
         rng = random.Random(seed)
+        self.packet_number = packet_number & 0xFFFF
 
         self.ch5 = ch5 if ch5 is not None else [
             rng.randint(1900, 2200) for _ in range(self.NUM_SAMPLES)
@@ -90,7 +91,7 @@ class MockDataPacket8274D(MockPacket):
         header = command_number_bytes + payload_length_bytes
         header_checksum = self.calculate_checksum(header)
 
-        counter = conv.int_to_binary_bytes(1234, 2)
+        counter = self.packet_number.to_bytes(2, "little")
         timestamp = conv.int_to_binary_bytes(17823, 2)
 
         payload = counter + timestamp
@@ -119,4 +120,3 @@ class MockDataPacket8274D(MockPacket):
         test_packet_bytes: bytes = stx + command_number_bytes + payload_length_bytes + header_checksum + etx + payload + data_checksum + etx
 
         return test_packet_bytes
-    

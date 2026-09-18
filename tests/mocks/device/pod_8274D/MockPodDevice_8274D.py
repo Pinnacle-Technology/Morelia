@@ -479,9 +479,11 @@ class MockPod8274D(Pod8274D):
                 ch5=ch5,
                 ch6=ch6,
                 ch7=ch7,
+                packet_number=self._stream_counter,
             ).to_bytes()
 
             self._port_read_queue.append(raw_packet)
+            self._stream_counter = (self._stream_counter + 1) & 0xFFFF
 
             sample_index += self.SAMPLES_PER_PACKET
 

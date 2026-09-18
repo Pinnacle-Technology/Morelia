@@ -6,6 +6,58 @@ Streaming From Data Acquisition Systems 🤠
 
 .. contents:: 
 
+Acquisition timing and missing samples
+=====================================
+
+For 8206-HR, 8401HR and 8274D, Morelia decodes packet sequence counters and
+inserts synthetic NaN samples before the next real packet when a recoverable
+gap is detected. All channels in the lost packet are unknown, including
+EXT and TTL channels. A missing HR packet represents one sample per channel;
+a missing 8274D EEG packet represents 40 samples per channel.
+
+* 8206-HR and 8401HR first probe 200 counter transitions and require at least
+  95 percent to advance by one. They then use their 8-bit counters with at most
+  64 missing packets backfilled. The probe does not retrospectively fill gaps.
+  If it fails, streaming preserves received samples at the assigned rate, with
+  no gap insertion, duplicate suppression or adaptive rate estimation. One
+  warning includes counter and raw-frame examples for diagnosis. Three
+  consecutive implausible jumps after a successful probe disable the counter
+  for the rest of that subscription as well.
+* 8274D uses a 16-bit counter, with at most 20 missing packets backfilled.
+
+Counter wraparound is supported. Confirmed duplicate packets are suppressed.
+Larger jumps, backward jumps and long interruptions cause a logged timing
+resynchronization rather than speculative NaN insertion. A short counter cannot
+uniquely distinguish every reset or multiple wrap. State starts fresh for each
+streaming subscription.
+
+Source timestamps are integer Unix-epoch nanoseconds identifying the first
+sample in a packet. The first packet anchors calendar time; subsequent elapsed
+time uses a monotonic clock. For batches, the anchor subtracts the duration of
+the preceding samples in the batch. Unknown transport latency remains in the
+absolute-time estimate. The configured rate initializes timing. Three-second
+measurement windows count both received and recovered missing positions; the
+sample period moves ten percent toward the measured period, limited to two
+percent change per update. The shared 8274D expansion uses the packet's
+``sample_period_ns`` for consistent batch boundaries and within-batch spacing.
+
+Legacy 8206 is a separate case: it has no acquisition packet counter. Morelia
+uses its assigned sample rate and received batch lengths, without counter-based
+NaN insertion or adaptive rate estimation.
+
+Sinks own their missing-data representation. EDF substitutes zeros and limits
+missing-value annotations to one per ten seconds. InfluxDB and QuestDB omit the
+numeric field and write ``missing=true``. Other sinks receive NaNs. EDF and PVFS
+still use their configured sample frequency: inserted positions preserve small
+recovered gaps, but they do not reproduce source clock corrections or large
+resynchronization discontinuities.
+
+Read timeouts use a short polling interval for stop responsiveness. During an
+established stream, a waiting-for-data warning is emitted only after two seconds
+without a complete data packet, once per sustained stall. A counter-detected
+missing sample is handled independently and does not itself generate a read
+timeout warning.
+
 ======================
 The 1000-Foot View 👀
 ======================
