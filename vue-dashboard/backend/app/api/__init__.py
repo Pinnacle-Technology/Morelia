@@ -10,6 +10,7 @@ from app.api.events_stream import blp as events_stream_blp
 from app.api.experiments import blp as experiments_blp
 from app.api.filesystem import blp as filesystem_blp
 from app.api.gaps import blp as gaps_blp
+from app.api.grafana_views import blp as grafana_views_blp
 from app.api.incidents import blp as incidents_blp
 from app.api.operations import blp as operations_blp
 from app.api.runtimes import blp as runtimes_blp
@@ -48,6 +49,7 @@ def register_routes(api, app):
     api.register_blueprint(operations_blp)
     api.register_blueprint(incidents_blp)
     api.register_blueprint(gaps_blp)
+    api.register_blueprint(grafana_views_blp)
     api.register_blueprint(experiments_blp)
     api.register_blueprint(runtimes_blp)
     api.register_blueprint(devices_blp)

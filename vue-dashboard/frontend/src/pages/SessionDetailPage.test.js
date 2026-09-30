@@ -6,6 +6,7 @@ const sessionDetailSource = readFileSync(new URL("./SessionDetailPage.vue", impo
 const sessionsPageSource = readFileSync(new URL("./SessionsPage.vue", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../App.vue", import.meta.url), "utf8");
 const flowBarSource = readFileSync(new URL("../components/SessionFlowBar.vue", import.meta.url), "utf8");
+const grafanaViewSource = readFileSync(new URL("../components/GrafanaView.vue", import.meta.url), "utf8");
 
 describe("template-centric session closure", () => {
   it("routes session creation through templates instead of a blank session action", () => {
@@ -63,6 +64,22 @@ describe("template-centric session closure", () => {
 
     expect(status.reason).toContain("source template");
     expect(status.reason).not.toContain("restart");
+  });
+});
+
+describe("M4 Grafana graph", () => {
+  it("exposes the graph only from frozen configured Influx sinks", () => {
+    expect(sessionDetailSource).toContain("detail.value?.session?.device_flows");
+    expect(sessionDetailSource).toContain('toLowerCase() === "influx"');
+    expect(sessionDetailSource).toContain('{ id: "plot", label: "M4 comparison" }');
+    expect(sessionDetailSource).toContain('<GrafanaView :session-id="props.sessionId" />');
+    expect(sessionDetailSource).not.toContain("Live Plot integration is deferred");
+  });
+
+  it("does not reuse the unfinished browser-side plot stream", () => {
+    expect(sessionDetailSource).not.toContain("import LivePlot");
+    expect(grafanaViewSource).not.toContain("createPlotSubscription");
+    expect(grafanaViewSource).toContain("loadGrafanaView");
   });
 });
 

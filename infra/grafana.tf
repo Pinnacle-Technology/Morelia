@@ -1,5 +1,5 @@
 resource "docker_image" "grafana" {
-  name = "grafana/grafana-oss:latest"
+  name = "grafana/grafana-oss:11.6.5"
 }
 
 resource "docker_container" "grafana" {
@@ -20,7 +20,12 @@ resource "docker_container" "grafana" {
 
   env = [
     "GF_SECURITY_ADMIN_USER=${var.grafana_admin_user}",
-    "GF_SECURITY_ADMIN_PASSWORD=${var.grafana_admin_password}"
+    "GF_SECURITY_ADMIN_PASSWORD=${var.grafana_admin_password}",
+    # Trusted-lab deployment: anonymous Viewer can read this Grafana org.
+    "GF_SECURITY_ALLOW_EMBEDDING=true",
+    "GF_AUTH_ANONYMOUS_ENABLED=true",
+    "GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer",
+    "GF_DASHBOARDS_MIN_REFRESH_INTERVAL=500ms"
   ] 
 
   //potentially add volumes here for logs or other persistent data
@@ -37,6 +42,11 @@ resource "docker_container" "grafana" {
      type = "bind"
    }
 
+  mounts {
+    target = "/var/lib/grafana/dashboards"
+    source = abspath("${path.module}/grafana/dashboards")
+    type   = "bind"
+  }
 }
 
 provider "grafana" {
@@ -63,7 +73,8 @@ resource "grafana_data_source" "influxdb" {
   })
 
   secure_json_data_encoded = jsonencode({
-    token = var.influxdb_token
+    # Grafana reads with a bucket-scoped token; acquisition keeps its writer token.
+    token = var.influxdb_read_token
   })
 
   depends_on = [docker_container.grafana]
