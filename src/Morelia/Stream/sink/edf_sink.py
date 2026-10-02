@@ -13,15 +13,19 @@ try:
 except ImportError:
     from typing_extensions import Self
 import numpy as np
-import functools as ft
 import os
 
 from Morelia.Stream.sink import SinkInterface
+from Morelia.Stream.device_layout import resolve_layout
 from Morelia.packet.data import DataPacket
-from Morelia.Devices import Pod8206HR, Pod8401HR, Pod8274D, AcquisitionDevice
+from Morelia.Devices import AcquisitionDevice
 
 class EDFSink(SinkInterface):
     """Stream data to an EDF file.
+
+    NaN and infinite samples are stored as zero without removing sample positions.
+    EDF+ annotations report missing values at most once per 10 seconds of written
+    signal time, across all channels. EDF integer quantization also applies to zero.
 
     :param sample_rate: Sample rate of device being streamed from. Used in setting up EDF file.
     :param file_path: Path to CSV file to write to.
@@ -34,20 +38,11 @@ class EDFSink(SinkInterface):
         self._file_path = file_path
         self._pod = pod
         self.observe_on_scheduler = observe_on_scheduler
-
-        if isinstance(self._pod, Pod8206HR):
-                self._channels = ('EEG1', 'EEG2', 'EEG3/EMG', 'TTL1', 'TTl2', 'TTL3', 'TTl4')
-
-        elif isinstance(self._pod, Pod8401HR):
-
-            preamp_channel_names: list[str] = Pod8401HR.get_channel_map_for_preamp_device(self._pod.preamp).values() if not self._pod.preamp is None else ['A', 'B', 'C', 'D']
-
-            self._channels = tuple(preamp_channel_names) + ('EXT0', 'EXT1', 'TTL1', 'TTL2', 'TTL3', 'TTL4')
-
-        elif isinstance(self._pod, Pod8274D):
-                self._channels = ('Ch5', 'Ch6', 'Ch7')
-
+        self._layout = resolve_layout(pod, profile="with_digital")
+        self._channels = self._layout.channel_names
         self._buffer = [ [] for _ in self._channels ]
+        self._samples_written = 0
+        self._last_missing_annotation_sample = None
 
     @property 
     def pod(self):
@@ -55,7 +50,10 @@ class EDFSink(SinkInterface):
     
     @pod.setter
     def pod(self, device: AcquisitionDevice):
-        self._pod = value
+        self._pod = device
+        self._layout = resolve_layout(device, profile="with_digital")
+        self._channels = self._layout.channel_names
+        self._buffer = [ [] for _ in self._channels ]
     
     @property
     def file_path(self):
@@ -99,11 +97,14 @@ class EDFSink(SinkInterface):
                       f"This may cause write errors. Please close any programs using this file.", file=sys.stderr)
 
         self._edf_writer = EdfWriter(self._file_path, len(self._channels))
+        self._samples_written = 0
+        self._last_missing_annotation_sample = None
 
         for idx, channel in enumerate(self._channels):
-           self._edf_writer.setSignalHeader( idx, {
+            unit = self._layout.channels[idx].unit or 'uV'
+            self._edf_writer.setSignalHeader( idx, {
                 'label'         :  channel,
-                'dimension'     :  'uV',
+                'dimension'     :  unit,
                 'sample_frequency'   :  self._pod.sample_rate,
                 'physical_max'  :  EDF_PHYSICAL_BOUND,
                 'physical_min'  : -EDF_PHYSICAL_BOUND,
@@ -138,44 +139,14 @@ class EDFSink(SinkInterface):
         """
         :meta private:
         """
-        
-        if isinstance(self._pod, Pod8206HR):
-            try:
-                # Validate channel values before appending
-                ch0_val = float(packet.ch0) if not (np.isnan(packet.ch0) or np.isinf(packet.ch0)) else 0.0
-                ch1_val = float(packet.ch1) if not (np.isnan(packet.ch1) or np.isinf(packet.ch1)) else 0.0
-                ch2_val = float(packet.ch2) if not (np.isnan(packet.ch2) or np.isinf(packet.ch2)) else 0.0
-                
-                self._buffer[0].append(ch0_val)
-                self._buffer[1].append(ch1_val)
-                self._buffer[2].append(ch2_val)
-                self._buffer[3].append(float(packet.ttl1))
-                self._buffer[4].append(float(packet.ttl2))
-                self._buffer[5].append(float(packet.ttl3))
-                self._buffer[6].append(float(packet.ttl4))
-            except (AttributeError, ValueError, TypeError) as e:
-                # Skip this packet if it has invalid attributes or values
-                import sys
-                print(f"Warning: Skipping packet due to invalid data: {type(e).__name__}: {e}", file=sys.stderr)
-                return
-
-        elif isinstance(self._pod, Pod8401HR):
-            self._buffer[0].append(packet.ch0)
-            self._buffer[1].append(packet.ch1)
-            self._buffer[2].append(packet.ch2)
-            self._buffer[3].append(packet.ch3)
-            self._buffer[4].append(float(packet.ext0))
-            self._buffer[5].append(float(packet.ext1))
-            self._buffer[6].append(float(packet.ttl1))
-            self._buffer[7].append(float(packet.ttl2))
-            self._buffer[8].append(float(packet.ttl3))
-            self._buffer[9].append(float(packet.ttl4))
-
-        elif isinstance(self._pod, Pod8274D):
-            for (ch5, ch6, ch7) in zip(packet.ch5, packet.ch6, packet.ch7):
-                self._buffer[0].append(ch5)
-                self._buffer[1].append(ch6)
-                self._buffer[2].append(ch7)
+        try:
+            for _ts, values in self._layout.expand(timestamp, packet):
+                for i, value in enumerate(values):
+                    self._buffer[i].append(value)
+        except (AttributeError, ValueError, TypeError) as e:
+            import sys
+            print(f"Warning: Skipping packet due to invalid data: {type(e).__name__}: {e}", file=sys.stderr)
+            return
 
         if len(self._buffer[0]) >= self._pod.sample_rate:
             self._write_buffer_to_edf()
@@ -197,20 +168,7 @@ class EDFSink(SinkInterface):
             self._buffer = [[] for _ in self._channels]
             return
 
-        # Validate data
         try:
-            for buf in self._buffer:
-                arr = np.array(buf, dtype=np.float64)
-
-                if np.any(np.isnan(arr)) or np.any(np.isinf(arr)):
-                    import sys
-                    print(
-                        "Warning: Skipping EDF write due to NaN/inf values in buffer",
-                        file=sys.stderr
-                    )
-                    self._buffer = [[] for _ in self._channels]
-                    return
-
             samples_per_record = self._pod.sample_rate
 
             # Write complete EDF records only
@@ -224,11 +182,29 @@ class EDFSink(SinkInterface):
                     for buf in self._buffer
                 ]
 
+                missing = np.any(~np.isfinite(arrays), axis=0)
+                for arr in arrays:
+                    np.nan_to_num(arr, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
+
                 self._edf_writer.writeSamples(arrays)
 
                 # Remove written samples and keep overflow
+                record_start = self._samples_written
+                self._samples_written += samples_per_record
                 for i in range(len(self._buffer)):
                     self._buffer[i] = self._buffer[i][samples_per_record:]
+
+                # Use the file's sample timeline, not host arrival/writer speed.
+                # Only annotate values in records that were actually written.
+                for offset in np.flatnonzero(missing):
+                    sample = record_start + int(offset)
+                    last = self._last_missing_annotation_sample
+                    if last is None or sample - last >= 10 * samples_per_record:
+                        self._edf_writer.writeAnnotation(
+                            sample / samples_per_record, -1,
+                            "Missing values detected; replaced with zeros",
+                        )
+                        self._last_missing_annotation_sample = sample
 
         except OSError as e:
             import sys

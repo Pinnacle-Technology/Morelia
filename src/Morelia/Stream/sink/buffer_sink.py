@@ -1,4 +1,4 @@
-"""Send data to CSV file."""
+"""Send data to an in-memory buffer."""
 
 __author__      = 'James Hurd'
 __maintainer__  = 'Thresa Kelly'
@@ -13,7 +13,8 @@ except ImportError:
     from typing_extensions import Self
 
 from Morelia.Stream.sink import SinkInterface
-from Morelia.Devices import AcquisitionDevice, Pod8274D, Pod8206HR, Pod8401HR
+from Morelia.Stream.device_layout import resolve_layout
+from Morelia.Devices import AcquisitionDevice
 from Morelia.packet.data import DataPacket
 
 class BufferSink(SinkInterface):
@@ -22,10 +23,13 @@ class BufferSink(SinkInterface):
     When using a multiprocessing Manager list, set batch_size > 1 to append samples in chunks
     and reduce IPC (one extend per batch instead of one append per sample).
 
+    For batched devices (Pod8206, Pod8274D), each flush appends one row whose channel
+    values are the full per-packet sample lists (one buffer entry per USB/BT packet).
+
     :param buffer: Target list to append (timestamp, data) rows to; supports list and manager.list().
     :param pod: POD device data is being streamed from.
     :param batch_size: Flush to buffer every this many samples (default 100). Use 1 for no batching.
-    :type pod: class:`Pod8206HR | Pod8401HR | Pod8274D`
+    :type pod: class:`AcquisitionDevice`
     """
 
     def __init__(self, buffer, pod: AcquisitionDevice, batch_size: int = 100) -> None:
@@ -34,6 +38,7 @@ class BufferSink(SinkInterface):
         self._buffer = buffer
         self._batch_size = max(1, int(batch_size))
         self._batch: list = []
+        self._layout = resolve_layout(pod, profile="with_digital")
 
     @property
     def buffer(self):
@@ -41,19 +46,11 @@ class BufferSink(SinkInterface):
 
     def __enter__(self) -> Self:
         self._batch = []
-        if isinstance(self._pod, Pod8206HR):
-            self._buffer.append(('Time', 'EEG1', 'EEG2', 'EEG3/EMG'))
-
-        elif isinstance(self._pod, Pod8401HR):
-            preamp_channel_names: list[str] = Pod8401HR.get_channel_map_for_preamp_device(self._pod.preamp).values() if not self._pod.preamp is None else ['A', 'B', 'C', 'D']
-
-            self._buffer.append(('Time',) + tuple(preamp_channel_names) + ('aEXT0', 'aEXT1', 'aTTL1', 'aTTL2', 'aTTL3', 'aTTL4'))
-
-        elif isinstance(self._pod, Pod8274D):
-            self._buffer.append(('Time', 'Ch5 Batch', 'Ch6 Batch', 'Ch7 Batch'))
-
+        if self._layout.batched:
+            names = tuple(f"{n} Batch" for n in self._layout.channel_names)
         else:
-            raise ValueError(f'Device "{self._pod.device_name}" cannot be streamed from!')
+            names = self._layout.channel_names
+        self._buffer.append(('Time',) + names)
         return self
 
     def __exit__(self, *args, **kwargs) -> bool:
@@ -70,21 +67,15 @@ class BufferSink(SinkInterface):
 
     #TODO: check that sink is open
     def flush(self, timestamp: int, packet: DataPacket) -> None:
-
-        if isinstance(self._pod, Pod8206HR):
-            row = (timestamp, (packet.ch0, packet.ch1, packet.ch2, packet.ttl1, packet.ttl2, packet.ttl3, packet.ttl4))
-        elif isinstance(self._pod, Pod8401HR):
-            channel_data = (packet.ch0, packet.ch1, packet.ch2, packet.ch3)
-            aext_data = (packet.ext0, packet.ext1)
-            attl_data = (packet.ttl1, packet.ttl2, packet.ttl3, packet.ttl4)
-            row = (timestamp, (channel_data + aext_data + attl_data))
-        elif isinstance(self._pod, Pod8274D):
-            row = (timestamp, (packet.ch5, packet.ch6, packet.ch7))
-        else:
+        if self._layout.batched:
+            # One buffer entry per packet; channel values are sample lists.
+            self._batch.append((timestamp, self._layout.analog_packet_values(packet)))
+            self._flush_batch_if_full()
             return
 
-        self._batch.append(row)
-        self._flush_batch_if_full()
+        for ts, values in self._layout.expand(timestamp, packet):
+            self._batch.append((ts, values))
+            self._flush_batch_if_full()
     
     def get_dict(self):
         return {

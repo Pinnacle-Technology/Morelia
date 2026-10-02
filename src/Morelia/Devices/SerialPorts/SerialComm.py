@@ -5,6 +5,7 @@ import psutil
 import os
 import  time
 import subprocess
+import math
 
 # authorship
 __author__      = "Thresa Kelly"
@@ -257,18 +258,47 @@ class PortIO :
             bytes|None: If the serial port is open, it will return a set number of read bytes. \
                 If it is closed, it will return None.
         """
-        if(self.is_serial_closed()) :
-            return(None)
-        serial_port = self._serial_inst
-
-        if serial_port.timeout != timeout_sec:
-            serial_port.timeout = timeout_sec
-
-        r = serial_port.read(numBytes)
+        r = self.read_partial(numBytes, timeout_sec)
+        if r is None:
+            return None
         if len(r) < numBytes:
             raise TimeoutError('[!] Timeout for serial read after '+str(timeout_sec)+' seconds.')
         return r
+
+    def read_partial(self, numBytes: int, timeout_sec: int | float = 5) -> bytes | None:
+        """Return available bytes on timeout, for readers that retain fragments.
+
+        ``read`` keeps its exact-length contract for existing callers.
+        """
+        if self.is_serial_closed():
+            return None
+        serial_port = self._serial_inst
+        if serial_port.timeout != timeout_sec:
+            serial_port.timeout = timeout_sec
+        return serial_port.read(numBytes)
     
+    def read_available(self, max_bytes: int, timeout_sec: float = 5) -> bytes | None:
+        """Wait for one byte, then drain queued bytes without waiting for a block.
+
+        Streaming parsers retain and split the block. Quantize the waiting timeout
+        to Windows' millisecond resolution so tiny deadline changes don't trigger
+        SetCommState/SetCommTimeouts for every fragment of every packet.
+        """
+        if self.is_serial_closed():
+            return None
+        serial_port = self._serial_inst
+        available = min(max_bytes, serial_port.in_waiting)
+        if available:
+            return serial_port.read(available)
+        timeout = max(0.001, math.ceil(timeout_sec * 1000) / 1000)
+        if serial_port.timeout != timeout:
+            serial_port.timeout = timeout
+        first = serial_port.read(1)
+        if not first:
+            return first
+        available = min(max_bytes - len(first), serial_port.in_waiting)
+        return first + serial_port.read(available) if available else first
+
     def read_line(self) -> bytes|None :
         """Reads until a new line is read from the open serial port.
 

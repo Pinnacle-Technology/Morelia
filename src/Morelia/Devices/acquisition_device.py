@@ -77,6 +77,7 @@ class AcquisitionDevice(Pod):
         """Maps the device TYPE number to a pod device class name string."""
         type_code = str(self.type)
         type_map = {
+            "1": "Pod8206",
             "48": "Pod8206HR",
             "52": "Pod8229",
             "46": "Pod8274D",

@@ -3,6 +3,7 @@ from Morelia.Devices.BasicPodProtocol    import Pod
 from Morelia.Devices.preamp              import Preamp
 from Morelia.Devices.preamp_config       import lookup_preamp_config, list_preamp_models
 from Morelia.Devices.acquisition_device   import AcquisitionDevice
+from Morelia.Devices.PodDevice_8206      import Pod8206
 from Morelia.Devices.PodDevice_8206HR    import Pod8206HR
 from Morelia.Devices.PodDevice_8401HR    import Pod8401HR
 from Morelia.Devices.PodDevice_8229      import Pod8229

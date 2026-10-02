@@ -37,6 +37,13 @@ class DataPacket8206HR(DataPacket):
         self._ttl4 = None
     
     @property
+    def packet_counter(self) -> int:
+        """8-bit acquisition packet sequence (payload byte zero)."""
+        if len(self._raw_packet) < self._min_length:
+            raise ValueError("Truncated 8206HR data packet")
+        return self._raw_packet[5]
+
+    @property
     def ch0(self) -> int:
         """:return: Value read from channel 0."""
         if self._ch0 is None:
