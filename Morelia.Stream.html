@@ -65,7 +65,7 @@
 <li class="toctree-l4"><a class="reference internal" href="Morelia.signal.html">Morelia.signal package</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="Morelia.html#module-contents">Module contents</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Morelia.html#module-Morelia">Module contents</a></li>
 </ul>
 </li>
 </ul>
@@ -147,7 +147,7 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="Morelia.Stream.sink.html#sink-performance-and-gil-overview">Sink performance and GIL overview</a></li>
-<li class="toctree-l2"><a class="reference internal" href="Morelia.Stream.sink.html#module-contents">Module contents</a></li>
+<li class="toctree-l2"><a class="reference internal" href="Morelia.Stream.sink.html#module-Morelia.Stream.sink">Module contents</a></li>
 </ul>
 </li>
 </ul>
@@ -156,8 +156,68 @@
 <section id="submodules">
 <h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
 </section>
-<section id="morelia-stream-data-flow-module">
-<h2>Morelia.Stream.data_flow module<a class="headerlink" href="#morelia-stream-data-flow-module" title="Link to this heading"></a></h2>
+<section id="module-Morelia.Stream.data_flow">
+<span id="morelia-stream-data-flow-module"></span><h2>Morelia.Stream.data_flow module<a class="headerlink" href="#module-Morelia.Stream.data_flow" title="Link to this heading"></a></h2>
+<p>Stream data from multiple devices to multiple destinations. In technical terms, this module is used to create
+bipartite dataflow graphs from devices to data sinks.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="Morelia.Stream.data_flow.DataFlow">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">Morelia.Stream.data_flow.</span></span><span class="sig-name descname"><span class="pre">DataFlow</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">network</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#Morelia.Stream.data_flow.DataFlow" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Class that use multiprocessing to efficiently collect data from many devices at once.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>network</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<a class="reference internal" href="Morelia.Devices.html#Morelia.Devices.acquisition_device.AcquisitionDevice" title="Morelia.Devices.acquisition_device.AcquisitionDevice"><code class="xref py py-class docutils literal notranslate"><span class="pre">AcquisitionDevice</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<a class="reference internal" href="Morelia.Stream.sink.html#Morelia.Stream.sink.sink_interface.SinkInterface" title="Morelia.Stream.sink.sink_interface.SinkInterface"><code class="xref py py-class docutils literal notranslate"><span class="pre">SinkInterface</span></code></a>]]]</span>) – A mapping of data sources (POD devices) to one or more data sinks.</p></li>
+<li><p><strong>filter_method</strong> – Method to use to clean curropted data. Defaults to TAKE_PAST.</p></li>
+<li><p><strong>filter_insert_value</strong> – Value to insert when using the INSERT filter method. Defaults to NaN.</p></li>
+<li><p><strong>fail_tolerance</strong> – How many times in a row to fail reading before giving up on reading a “chunk” of data (“chunk” here is approximately 1 second of samples). Defaults to 3.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="Morelia.Stream.data_flow.DataFlow.collect">
+<span class="sig-name descname"><span class="pre">collect</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#Morelia.Stream.data_flow.DataFlow.collect" title="Link to this definition"></a></dt>
+<dd><p>Collect until <code class="docutils literal notranslate"><span class="pre">stop_collection</span></code> is called.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="Morelia.Stream.data_flow.DataFlow.collect_for_seconds">
+<span class="sig-name descname"><span class="pre">collect_for_seconds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">duration_sec</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#Morelia.Stream.data_flow.DataFlow.collect_for_seconds" title="Link to this definition"></a></dt>
+<dd><p>Collect data for <code class="docutils literal notranslate"><span class="pre">duration_sec</span></code> seconds.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>duration_sec</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></span>) – How long to collect data for in seconds.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="Morelia.Stream.data_flow.DataFlow.stop_collection">
+<span class="sig-name descname"><span class="pre">stop_collection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">join_timeout_sec</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">15.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#Morelia.Stream.data_flow.DataFlow.stop_collection" title="Link to this definition"></a></dt>
+<dd><p>Stop collecting data.</p>
+<p>Sets the stop events so workers exit their loop. Waits up to
+<code class="docutils literal notranslate"><span class="pre">join_timeout_sec</span></code> for each worker to exit so they can send
+STREAM 0 to the device, flush sinks (e.g. PVFS), and close cleanly;
+if a worker is still alive (e.g. blocked in a serial read or disk I/O),
+it is terminated so the main process does not hang.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
 </section>
 <section id="module-Morelia.Stream.source">
 <span id="morelia-stream-source-module"></span><h2>Morelia.Stream.source module<a class="headerlink" href="#module-Morelia.Stream.source" title="Link to this heading"></a></h2>
@@ -165,7 +225,7 @@
 <dl class="py function">
 <dt class="sig sig-object py" id="Morelia.Stream.source.get_data">
 <span class="sig-prename descclassname"><span class="pre">Morelia.Stream.source.</span></span><span class="sig-name descname"><span class="pre">get_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">duration</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">manual_stop_event</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pod</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sinks</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#Morelia.Stream.source.get_data" title="Link to this definition"></a></dt>
-<dd><p>Streams data from the POD device. The data drops about every 1 second.
+<dd><p>Streams data from the POD device.
 Streaming will continue until a “stop streaming” packet is recieved.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -192,8 +252,8 @@ Streaming will continue until a “stop streaming” packet is recieved.</p>
 <dd></dd></dl>
 
 </section>
-<section id="module-contents">
-<h2>Module contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<section id="module-Morelia.Stream">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-Morelia.Stream" title="Link to this heading"></a></h2>
 </section>
 </section>
 

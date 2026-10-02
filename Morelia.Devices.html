@@ -65,7 +65,7 @@
 <li class="toctree-l4"><a class="reference internal" href="Morelia.signal.html">Morelia.signal package</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="Morelia.html#module-contents">Module contents</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Morelia.html#module-Morelia">Module contents</a></li>
 </ul>
 </li>
 </ul>
@@ -127,7 +127,9 @@
 <li class="toctree-l4"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.open_serial_port"><code class="docutils literal notranslate"><span class="pre">PortIO.open_serial_port()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.purge_rx"><code class="docutils literal notranslate"><span class="pre">PortIO.purge_rx()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read"><code class="docutils literal notranslate"><span class="pre">PortIO.read()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_available"><code class="docutils literal notranslate"><span class="pre">PortIO.read_available()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_line"><code class="docutils literal notranslate"><span class="pre">PortIO.read_line()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_partial"><code class="docutils literal notranslate"><span class="pre">PortIO.read_partial()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_until"><code class="docutils literal notranslate"><span class="pre">PortIO.read_until()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.set_baudrate"><code class="docutils literal notranslate"><span class="pre">PortIO.set_baudrate()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.write"><code class="docutils literal notranslate"><span class="pre">PortIO.write()</span></code></a></li>
@@ -581,12 +583,11 @@ subclasses).</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="Morelia.Devices.PodDevice_8206HR.Pod8206HR.read_pod_packet_streaming">
 <span class="sig-name descname"><span class="pre">read_pod_packet_streaming</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">timeout_sec</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validate_checksum</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#Morelia.Devices.PodDevice_8206HR.Pod8206HR.read_pod_packet_streaming" title="Link to this definition"></a></dt>
-<dd><p>Read one packet (data or control) using a single read(16) when aligned. Use in streaming mode for higher throughput.</p>
-<p>When a fixed-size block is a complete data packet (16 bytes, ends with ETX), returns DataPacket8206HR.
-When the block starts with STX but does not end with ETX (e.g. control packet), reads to ETX, parses as
-ControlPacket, and returns it so the pipeline can deliver it to read_queue for mixed traffic.
-Accumulates partial reads so driver returning fewer than 16 bytes does not cause timeout.
-Raises TimeoutError if no data in timeout_sec.</p>
+<dd><p>Read mixed control/data packets, retaining fragments across timeouts.</p>
+<p>Inspect the five-byte header before choosing the frame length. Binary4
+payloads may contain STX/ETX bytes; only their fixed terminator is framing.
+A short STREAM acknowledgement is returned without waiting for data.
+One deadline bounds all reads, including resynchronization.</p>
 </dd></dl>
 
 <dl class="py property">

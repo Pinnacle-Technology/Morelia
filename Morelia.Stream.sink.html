@@ -65,7 +65,7 @@
 <li class="toctree-l4"><a class="reference internal" href="Morelia.signal.html">Morelia.signal package</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="Morelia.html#module-contents">Module contents</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Morelia.html#module-Morelia">Module contents</a></li>
 </ul>
 </li>
 </ul>
@@ -143,6 +143,9 @@
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">Morelia.Stream.sink.edf_sink.</span></span><span class="sig-name descname"><span class="pre">EDFSink</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pod</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">observe_on_scheduler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#Morelia.Stream.sink.edf_sink.EDFSink" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#Morelia.Stream.sink.sink_interface.SinkInterface" title="Morelia.Stream.sink.sink_interface.SinkInterface"><code class="xref py py-class docutils literal notranslate"><span class="pre">SinkInterface</span></code></a></p>
 <p>Stream data to an EDF file.</p>
+<p>NaN and infinite samples are stored as zero without removing sample positions.
+EDF+ annotations report missing values at most once per 10 seconds of written
+signal time, across all channels. EDF integer quantization also applies to zero.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -180,6 +183,8 @@
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">Morelia.Stream.sink.influx_sink.</span></span><span class="sig-name descname"><span class="pre">InfluxSink</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pod</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">url</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'http://localhost:8086'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">api_token</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'admin-token'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">org</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default-org'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bucket</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'influx_dump'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">measurement</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'default-measurement'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">observe_on_scheduler</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#Morelia.Stream.sink.influx_sink.InfluxSink" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#Morelia.Stream.sink.sink_interface.SinkInterface" title="Morelia.Stream.sink.sink_interface.SinkInterface"><code class="xref py py-class docutils literal notranslate"><span class="pre">SinkInterface</span></code></a></p>
 <p>Stream data to InfluxDB for real-time monitoring.</p>
+<p>Non-finite samples retain their timestamp and tags with <code class="docutils literal notranslate"><span class="pre">missing=true</span></code>
+and no numeric value field. Valid samples include <code class="docutils literal notranslate"><span class="pre">missing=false</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -188,7 +193,7 @@
 <li><p><strong>org</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Organization within InfluxDB to write data to.</p></li>
 <li><p><strong>bucket</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Bucket within InfluxDB to write data to.</p></li>
 <li><p><strong>measurement</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></span>) – Measurement within InfluxDB to write data to.</p></li>
-<li><p><strong>pod</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="Morelia.Devices.html#Morelia.Devices.acquisition_device.AcquisitionDevice" title="Morelia.Devices.acquisition_device.AcquisitionDevice"><code class="xref py py-class docutils literal notranslate"><span class="pre">AcquisitionDevice</span></code></a></span>) – 8206-HR/8401-HR/8274D POD device you are streaming data from.</p></li>
+<li><p><strong>pod</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="Morelia.Devices.html#Morelia.Devices.acquisition_device.AcquisitionDevice" title="Morelia.Devices.acquisition_device.AcquisitionDevice"><code class="xref py py-class docutils literal notranslate"><span class="pre">AcquisitionDevice</span></code></a></span>) – Acquisition device you are streaming data from.</p></li>
 <li><p><strong>observe_on_scheduler</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span>) – If set (e.g. “thread_pool”), run flush() on that scheduler so the stream is not blocked by InfluxDB I/O. Optional; queue is unbounded.</p></li>
 </ul>
 </dd>
@@ -302,8 +307,8 @@ Interpreter Lock (GIL), and when to use options such as
 see the &quot;Sink performance and the GIL&quot; section in the top-level
 <code class="docutils literal notranslate"><span class="pre">README.md</span></code> of this repository.</p>
 </section>
-<section id="module-contents">
-<h2>Module contents<a class="headerlink" href="#module-contents" title="Link to this heading"></a></h2>
+<section id="module-Morelia.Stream.sink">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-Morelia.Stream.sink" title="Link to this heading"></a></h2>
 </section>
 </section>
 

@@ -104,14 +104,17 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="streaming.html">Streaming From Data Acquisition Systems 🤠</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="streaming.html#the-1000-foot-view">The 1000-Foot View 👀</a></li>
-<li class="toctree-l2"><a class="reference internal" href="streaming.html#defining-a-streaming-workflow">Defining a Streaming Workflow 📐</a></li>
-<li class="toctree-l2"><a class="reference internal" href="streaming.html#let-the-data-flow">Let the Data Flow! 🌊</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="streaming.html#temporal-streaming">Temporal Streaming ⏳</a></li>
-<li class="toctree-l3"><a class="reference internal" href="streaming.html#infinite-streaming">Infinite Streaming 🌌</a></li>
+<li class="toctree-l2"><a class="reference internal" href="streaming.html#acquisition-timing-and-missing-samples">Acquisition timing and missing samples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="streaming.html#the-1000-foot-view">The 1000-Foot View 👀</a></li>
+<li class="toctree-l3"><a class="reference internal" href="streaming.html#defining-a-streaming-workflow">Defining a Streaming Workflow 📐</a></li>
+<li class="toctree-l3"><a class="reference internal" href="streaming.html#let-the-data-flow">Let the Data Flow! 🌊</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="streaming.html#temporal-streaming">Temporal Streaming ⏳</a></li>
+<li class="toctree-l4"><a class="reference internal" href="streaming.html#infinite-streaming">Infinite Streaming 🌌</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="streaming.html#making-your-own-sinks">Making Your Own Sinks 📦</a></li>
+<li class="toctree-l3"><a class="reference internal" href="streaming.html#making-your-own-sinks">Making Your Own Sinks 📦</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="terraform.html">Visualizing Data During Streams 😎</a><ul>
@@ -241,7 +244,9 @@
 <li class="toctree-l9"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.open_serial_port"><code class="docutils literal notranslate"><span class="pre">PortIO.open_serial_port()</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.purge_rx"><code class="docutils literal notranslate"><span class="pre">PortIO.purge_rx()</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read"><code class="docutils literal notranslate"><span class="pre">PortIO.read()</span></code></a></li>
+<li class="toctree-l9"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_available"><code class="docutils literal notranslate"><span class="pre">PortIO.read_available()</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_line"><code class="docutils literal notranslate"><span class="pre">PortIO.read_line()</span></code></a></li>
+<li class="toctree-l9"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_partial"><code class="docutils literal notranslate"><span class="pre">PortIO.read_partial()</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_until"><code class="docutils literal notranslate"><span class="pre">PortIO.read_until()</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.set_baudrate"><code class="docutils literal notranslate"><span class="pre">PortIO.set_baudrate()</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.write"><code class="docutils literal notranslate"><span class="pre">PortIO.write()</span></code></a></li>
@@ -499,20 +504,28 @@
 </ul>
 </li>
 <li class="toctree-l7"><a class="reference internal" href="Morelia.Stream.sink.html#sink-performance-and-gil-overview">Sink performance and GIL overview</a></li>
-<li class="toctree-l7"><a class="reference internal" href="Morelia.Stream.sink.html#module-contents">Module contents</a></li>
+<li class="toctree-l7"><a class="reference internal" href="Morelia.Stream.sink.html#module-Morelia.Stream.sink">Module contents</a></li>
 </ul>
 </li>
 </ul>
 </li>
 <li class="toctree-l5"><a class="reference internal" href="Morelia.Stream.html#submodules">Submodules</a></li>
-<li class="toctree-l5"><a class="reference internal" href="Morelia.Stream.html#morelia-stream-data-flow-module">Morelia.Stream.data_flow module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="Morelia.Stream.html#module-Morelia.Stream.data_flow">Morelia.Stream.data_flow module</a><ul>
+<li class="toctree-l6"><a class="reference internal" href="Morelia.Stream.html#Morelia.Stream.data_flow.DataFlow"><code class="docutils literal notranslate"><span class="pre">DataFlow</span></code></a><ul>
+<li class="toctree-l7"><a class="reference internal" href="Morelia.Stream.html#Morelia.Stream.data_flow.DataFlow.collect"><code class="docutils literal notranslate"><span class="pre">DataFlow.collect()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="Morelia.Stream.html#Morelia.Stream.data_flow.DataFlow.collect_for_seconds"><code class="docutils literal notranslate"><span class="pre">DataFlow.collect_for_seconds()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="Morelia.Stream.html#Morelia.Stream.data_flow.DataFlow.stop_collection"><code class="docutils literal notranslate"><span class="pre">DataFlow.stop_collection()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l5"><a class="reference internal" href="Morelia.Stream.html#module-Morelia.Stream.source">Morelia.Stream.source module</a><ul>
 <li class="toctree-l6"><a class="reference internal" href="Morelia.Stream.html#Morelia.Stream.source.get_data"><code class="docutils literal notranslate"><span class="pre">get_data()</span></code></a></li>
 <li class="toctree-l6"><a class="reference internal" href="Morelia.Stream.html#Morelia.Stream.source.get_data_wrapper"><code class="docutils literal notranslate"><span class="pre">get_data_wrapper()</span></code></a></li>
 <li class="toctree-l6"><a class="reference internal" href="Morelia.Stream.html#Morelia.Stream.source.make_packet_putter"><code class="docutils literal notranslate"><span class="pre">make_packet_putter()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l5"><a class="reference internal" href="Morelia.Stream.html#module-contents">Module contents</a></li>
+<li class="toctree-l5"><a class="reference internal" href="Morelia.Stream.html#module-Morelia.Stream">Module contents</a></li>
 </ul>
 </li>
 <li class="toctree-l4"><a class="reference internal" href="Morelia.packet.html">Morelia.packet package</a><ul>
@@ -528,6 +541,7 @@
 <li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8206hr.DataPacket8206HR.ch0"><code class="docutils literal notranslate"><span class="pre">DataPacket8206HR.ch0</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8206hr.DataPacket8206HR.ch1"><code class="docutils literal notranslate"><span class="pre">DataPacket8206HR.ch1</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8206hr.DataPacket8206HR.ch2"><code class="docutils literal notranslate"><span class="pre">DataPacket8206HR.ch2</span></code></a></li>
+<li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8206hr.DataPacket8206HR.packet_counter"><code class="docutils literal notranslate"><span class="pre">DataPacket8206HR.packet_counter</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8206hr.DataPacket8206HR.ttl1"><code class="docutils literal notranslate"><span class="pre">DataPacket8206HR.ttl1</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8206hr.DataPacket8206HR.ttl2"><code class="docutils literal notranslate"><span class="pre">DataPacket8206HR.ttl2</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8206hr.DataPacket8206HR.ttl3"><code class="docutils literal notranslate"><span class="pre">DataPacket8206HR.ttl3</span></code></a></li>
@@ -545,6 +559,7 @@
 <li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8401hr.DataPacket8401HR.ext0"><code class="docutils literal notranslate"><span class="pre">DataPacket8401HR.ext0</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8401hr.DataPacket8401HR.ext1"><code class="docutils literal notranslate"><span class="pre">DataPacket8401HR.ext1</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8401hr.DataPacket8401HR.get_primary_channel_value"><code class="docutils literal notranslate"><span class="pre">DataPacket8401HR.get_primary_channel_value()</span></code></a></li>
+<li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8401hr.DataPacket8401HR.packet_counter"><code class="docutils literal notranslate"><span class="pre">DataPacket8401HR.packet_counter</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8401hr.DataPacket8401HR.ttl1"><code class="docutils literal notranslate"><span class="pre">DataPacket8401HR.ttl1</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8401hr.DataPacket8401HR.ttl2"><code class="docutils literal notranslate"><span class="pre">DataPacket8401HR.ttl2</span></code></a></li>
 <li class="toctree-l9"><a class="reference internal" href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8401hr.DataPacket8401HR.ttl3"><code class="docutils literal notranslate"><span class="pre">DataPacket8401HR.ttl3</span></code></a></li>
@@ -669,7 +684,7 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="Morelia.html#module-contents">Module contents</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Morelia.html#module-Morelia">Module contents</a></li>
 </ul>
 </li>
 </ul>

@@ -65,7 +65,7 @@
 <li class="toctree-l4"><a class="reference internal" href="Morelia.signal.html">Morelia.signal package</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="Morelia.html#module-contents">Module contents</a></li>
+<li class="toctree-l3"><a class="reference internal" href="Morelia.html#module-Morelia">Module contents</a></li>
 </ul>
 </li>
 </ul>
@@ -327,6 +327,20 @@ timeout_sec (int|float, optional): Time in seconds to wait for serial data.     
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="Morelia.Devices.SerialPorts.SerialComm.PortIO.read_available">
+<span class="sig-name descname"><span class="pre">read_available</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_bytes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout_sec</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_available" title="Link to this definition"></a></dt>
+<dd><p>Wait for one byte, then drain queued bytes without waiting for a block.</p>
+<p>Streaming parsers retain and split the block. Quantize the waiting timeout
+to Windows’ millisecond resolution so tiny deadline changes don’t trigger
+SetCommState/SetCommTimeouts for every fragment of every packet.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="Morelia.Devices.SerialPorts.SerialComm.PortIO.read_line">
 <span class="sig-name descname"><span class="pre">read_line</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_line" title="Link to this definition"></a></dt>
 <dd><p>Reads until a new line is read from the open serial port.</p>
@@ -337,6 +351,18 @@ timeout_sec (int|float, optional): Time in seconds to wait for serial data.     
 </dl>
 <dl class="simple">
 <dt>Returns:</dt><dd><p>bytes|None: If the serial port is open, it will return a complete read line.                 If closed, it will return None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="Morelia.Devices.SerialPorts.SerialComm.PortIO.read_partial">
+<span class="sig-name descname"><span class="pre">read_partial</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">numBytes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout_sec</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_partial" title="Link to this definition"></a></dt>
+<dd><p>Return available bytes on timeout, for readers that retain fragments.</p>
+<p><code class="docutils literal notranslate"><span class="pre">read</span></code> keeps its exact-length contract for existing callers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">bytes</span></code> | <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></span></p>
 </dd>
 </dl>
 </dd></dl>

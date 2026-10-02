@@ -47,14 +47,17 @@
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">The Hitchhiker’s Guide to Morelia 🐍</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Streaming From Data Acquisition Systems 🤠</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#the-1000-foot-view">The 1000-Foot View 👀</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#defining-a-streaming-workflow">Defining a Streaming Workflow 📐</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#let-the-data-flow">Let the Data Flow! 🌊</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#temporal-streaming">Temporal Streaming ⏳</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#infinite-streaming">Infinite Streaming 🌌</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#acquisition-timing-and-missing-samples">Acquisition timing and missing samples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-1000-foot-view">The 1000-Foot View 👀</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#defining-a-streaming-workflow">Defining a Streaming Workflow 📐</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#let-the-data-flow">Let the Data Flow! 🌊</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#temporal-streaming">Temporal Streaming ⏳</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#infinite-streaming">Infinite Streaming 🌌</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#making-your-own-sinks">Making Your Own Sinks 📦</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#making-your-own-sinks">Making Your Own Sinks 📦</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="terraform.html">Visualizing Data During Streams 😎</a></li>
@@ -99,21 +102,71 @@
 <ul class="simple">
 <li><p><a class="reference internal" href="#streaming-from-data-acquisition-systems" id="id1">Streaming From Data Acquisition Systems 🤠</a></p>
 <ul>
-<li><p><a class="reference internal" href="#the-1000-foot-view" id="id2">The 1000-Foot View 👀</a></p></li>
-<li><p><a class="reference internal" href="#defining-a-streaming-workflow" id="id3">Defining a Streaming Workflow 📐</a></p></li>
-<li><p><a class="reference internal" href="#let-the-data-flow" id="id4">Let the Data Flow! 🌊</a></p>
+<li><p><a class="reference internal" href="#acquisition-timing-and-missing-samples" id="id2">Acquisition timing and missing samples</a></p>
 <ul>
-<li><p><a class="reference internal" href="#temporal-streaming" id="id5">Temporal Streaming ⏳</a></p></li>
-<li><p><a class="reference internal" href="#infinite-streaming" id="id6">Infinite Streaming 🌌</a></p></li>
+<li><p><a class="reference internal" href="#the-1000-foot-view" id="id3">The 1000-Foot View 👀</a></p></li>
+<li><p><a class="reference internal" href="#defining-a-streaming-workflow" id="id4">Defining a Streaming Workflow 📐</a></p></li>
+<li><p><a class="reference internal" href="#let-the-data-flow" id="id5">Let the Data Flow! 🌊</a></p>
+<ul>
+<li><p><a class="reference internal" href="#temporal-streaming" id="id6">Temporal Streaming ⏳</a></p></li>
+<li><p><a class="reference internal" href="#infinite-streaming" id="id7">Infinite Streaming 🌌</a></p></li>
 </ul>
 </li>
-<li><p><a class="reference internal" href="#making-your-own-sinks" id="id7">Making Your Own Sinks 📦</a></p></li>
+<li><p><a class="reference internal" href="#making-your-own-sinks" id="id8">Making Your Own Sinks 📦</a></p></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
 </nav>
+<section id="acquisition-timing-and-missing-samples">
+<h2><a class="toc-backref" href="#id2" role="doc-backlink">Acquisition timing and missing samples</a><a class="headerlink" href="#acquisition-timing-and-missing-samples" title="Link to this heading"></a></h2>
+<p>For 8206-HR, 8401HR and 8274D, Morelia decodes packet sequence counters and
+inserts synthetic NaN samples before the next real packet when a recoverable
+gap is detected. All channels in the lost packet are unknown, including
+EXT and TTL channels. A missing HR packet represents one sample per channel;
+a missing 8274D EEG packet represents 40 samples per channel.</p>
+<ul class="simple">
+<li><p>8206-HR and 8401HR first probe 200 counter transitions and require at least
+95 percent to advance by one. They then use their 8-bit counters with at most
+64 missing packets backfilled. The probe does not retrospectively fill gaps.
+If it fails, streaming preserves received samples at the assigned rate, with
+no gap insertion, duplicate suppression or adaptive rate estimation. One
+warning includes counter and raw-frame examples for diagnosis. Three
+consecutive implausible jumps after a successful probe disable the counter
+for the rest of that subscription as well.</p></li>
+<li><p>8274D uses a 16-bit counter, with at most 20 missing packets backfilled.</p></li>
+</ul>
+<p>Counter wraparound is supported. Confirmed duplicate packets are suppressed.
+Larger jumps, backward jumps and long interruptions cause a logged timing
+resynchronization rather than speculative NaN insertion. A short counter cannot
+uniquely distinguish every reset or multiple wrap. State starts fresh for each
+streaming subscription.</p>
+<p>Source timestamps are integer Unix-epoch nanoseconds identifying the first
+sample in a packet. The first packet anchors calendar time; subsequent elapsed
+time uses a monotonic clock. For batches, the anchor subtracts the duration of
+the preceding samples in the batch. Unknown transport latency remains in the
+absolute-time estimate. The configured rate initializes timing. Three-second
+measurement windows count both received and recovered missing positions; the
+sample period moves ten percent toward the measured period, limited to two
+percent change per update. The shared 8274D expansion uses the packet’s
+<code class="docutils literal notranslate"><span class="pre">sample_period_ns</span></code> for consistent batch boundaries and within-batch spacing.</p>
+<p>Legacy 8206 is a separate case: it has no acquisition packet counter. Morelia
+uses its assigned sample rate and received batch lengths, without counter-based
+NaN insertion or adaptive rate estimation.</p>
+<p>Sinks own their missing-data representation. EDF substitutes zeros and limits
+missing-value annotations to one per ten seconds. InfluxDB and QuestDB omit the
+numeric field and write <code class="docutils literal notranslate"><span class="pre">missing=true</span></code>. Other sinks receive NaNs. EDF and PVFS
+still use their configured sample frequency: inserted positions preserve small
+recovered gaps, but they do not reproduce source clock corrections or large
+resynchronization discontinuities.</p>
+<p>Read timeouts use a short polling interval for stop responsiveness. During an
+established stream, a waiting-for-data warning is emitted only after two seconds
+without a complete data packet, once per sustained stall. A counter-detected
+missing sample is handled independently and does not itself generate a read
+timeout warning.</p>
 <section id="the-1000-foot-view">
-<h2><a class="toc-backref" href="#id2" role="doc-backlink">The 1000-Foot View 👀</a><a class="headerlink" href="#the-1000-foot-view" title="Link to this heading"></a></h2>
+<h3><a class="toc-backref" href="#id3" role="doc-backlink">The 1000-Foot View 👀</a><a class="headerlink" href="#the-1000-foot-view" title="Link to this heading"></a></h3>
 <p>Streaming in Morelia takes the form of defining and executing data-flow graphs. Each data-flow
 graph (in Morelia) consists of three parts:</p>
 <ul class="simple">
@@ -134,7 +187,7 @@ to exactly <strong>one</strong> source. In more mathematical terms, it is an <em
 We will use this diagram as a running example as we move into the next section.</p>
 </section>
 <section id="defining-a-streaming-workflow">
-<h2><a class="toc-backref" href="#id3" role="doc-backlink">Defining a Streaming Workflow 📐</a><a class="headerlink" href="#defining-a-streaming-workflow" title="Link to this heading"></a></h2>
+<h3><a class="toc-backref" href="#id4" role="doc-backlink">Defining a Streaming Workflow 📐</a><a class="headerlink" href="#defining-a-streaming-workflow" title="Link to this heading"></a></h3>
 <p>Now, with the concepts out of the way it’s time to get our hands dirty in the code. Throughout this section, we will use the diagram at the
 end of the previous section as an example as we walk through how to setup a data-flow graph.</p>
 <div class="admonition note">
@@ -278,13 +331,13 @@ over and loop at how to start collecting data now that everything is in place.</
 </div>
 </section>
 <section id="let-the-data-flow">
-<h2><a class="toc-backref" href="#id4" role="doc-backlink">Let the Data Flow! 🌊</a><a class="headerlink" href="#let-the-data-flow" title="Link to this heading"></a></h2>
+<h3><a class="toc-backref" href="#id5" role="doc-backlink">Let the Data Flow! 🌊</a><a class="headerlink" href="#let-the-data-flow" title="Link to this heading"></a></h3>
 <p>This section will use the example from last section, so if you are just jumping in
 here, be sure to reference that first.</p>
 <p>Once we’ve created our flow graph, we can start streaming! We can either stream data
 for a specific time interval, or whenever we tell it to stop.</p>
 <section id="temporal-streaming">
-<h3><a class="toc-backref" href="#id5" role="doc-backlink">Temporal Streaming ⏳</a><a class="headerlink" href="#temporal-streaming" title="Link to this heading"></a></h3>
+<h4><a class="toc-backref" href="#id6" role="doc-backlink">Temporal Streaming ⏳</a><a class="headerlink" href="#temporal-streaming" title="Link to this heading"></a></h4>
 <p>The first way to stream is for a particular duration of time, using <code class="docutils literal notranslate"><span class="pre">DataFlow</span></code>’s <code class="docutils literal notranslate"><span class="pre">collect_for_seconds</span></code> method. This method takes one parameter, how many seconds to collect for,
 and <strong>blocks until collection has finished</strong>. When run, this will execute the data-flow graph defined by <code class="docutils literal notranslate"><span class="pre">DataFlow</span></code>, streaming data from sources to sinks. As a short example,
 to collect for 5 minutes using our example from earlier.</p>
@@ -293,7 +346,7 @@ to collect for 5 minutes using our example from earlier.</p>
 </div>
 </section>
 <section id="infinite-streaming">
-<h3><a class="toc-backref" href="#id6" role="doc-backlink">Infinite Streaming 🌌</a><a class="headerlink" href="#infinite-streaming" title="Link to this heading"></a></h3>
+<h4><a class="toc-backref" href="#id7" role="doc-backlink">Infinite Streaming 🌌</a><a class="headerlink" href="#infinite-streaming" title="Link to this heading"></a></h4>
 <p>The other way to stream is for an undefined amount of time. To begin streaming, use <code class="docutils literal notranslate"><span class="pre">DataFlow</span></code>’s <code class="docutils literal notranslate"><span class="pre">collect</span></code> method. This method takes no parameters and is <strong>non-blocking</strong>.
 When you are ready to stop streaming, use the <code class="docutils literal notranslate"><span class="pre">stop_collecting</span></code> method. This behavior is also supported through context managers, where you can use a <code class="docutils literal notranslate"><span class="pre">with</span></code> statement to automatically start
 and stop streaming. For example,</p>
@@ -312,9 +365,10 @@ and stop streaming. For example,</p>
 </section>
 </section>
 <section id="making-your-own-sinks">
-<h2><a class="toc-backref" href="#id7" role="doc-backlink">Making Your Own Sinks 📦</a><a class="headerlink" href="#making-your-own-sinks" title="Link to this heading"></a></h2>
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">Making Your Own Sinks 📦</a><a class="headerlink" href="#making-your-own-sinks" title="Link to this heading"></a></h3>
 <p>If you are an advanced power user, you may want to try your hand at making your own sink.
 to create a custom sink, your class must be a subclass of <code class="docutils literal notranslate"><span class="pre">SinkInterface</span></code> and implement the interface.</p>
+</section>
 </section>
 </section>
 

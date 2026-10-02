@@ -221,14 +221,14 @@
       </ul></li>
       <li><a href="Morelia.Devices.html#Morelia.Devices.BasicPodProtocol.Pod.checksum">checksum() (Morelia.Devices.BasicPodProtocol.Pod static method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="Morelia.Devices.html#Morelia.Devices.BasicPodProtocol.Pod.choose_port">choose_port() (Morelia.Devices.BasicPodProtocol.Pod static method)</a>
 
       <ul>
         <li><a href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.PortAccess.FindPorts.choose_port">(Morelia.Devices.SerialPorts.PortAccess.FindPorts static method)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="Morelia.Devices.html#Morelia.Devices.BasicPodProtocol.Pod.cleanup">cleanup() (Morelia.Devices.BasicPodProtocol.Pod method)</a>
 </li>
       <li><a href="Morelia.Stream.sink.html#Morelia.Stream.sink.influx_sink.InfluxSink.close">close() (Morelia.Stream.sink.influx_sink.InfluxSink method)</a>
@@ -240,6 +240,10 @@
       <li><a href="Morelia.Devices.html#Morelia.Devices.PodDevice_8229.Pod8229.code_day_of_week">code_day_of_week() (Morelia.Devices.PodDevice_8229.Pod8229 static method)</a>
 </li>
       <li><a href="Morelia.Devices.html#Morelia.Devices.PodDevice_8229.Pod8229.code_day_schedule">code_day_schedule() (Morelia.Devices.PodDevice_8229.Pod8229 static method)</a>
+</li>
+      <li><a href="Morelia.Stream.html#Morelia.Stream.data_flow.DataFlow.collect">collect() (Morelia.Stream.data_flow.DataFlow method)</a>
+</li>
+      <li><a href="Morelia.Stream.html#Morelia.Stream.data_flow.DataFlow.collect_for_seconds">collect_for_seconds() (Morelia.Stream.data_flow.DataFlow method)</a>
 </li>
       <li><a href="Morelia.packet.html#Morelia.packet.pod_packet.PodPacket.command_number">command_number (Morelia.packet.pod_packet.PodPacket property)</a>
 </li>
@@ -261,6 +265,8 @@
 <h2 id="D">D</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="Morelia.Stream.html#Morelia.Stream.data_flow.DataFlow">DataFlow (class in Morelia.Stream.data_flow)</a>
+</li>
       <li><a href="Morelia.packet.data.html#Morelia.packet.data.data_packet.DataPacket">DataPacket (class in Morelia.packet.data.data_packet)</a>
 </li>
       <li><a href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8206hr.DataPacket8206HR">DataPacket8206HR (class in Morelia.packet.data.data_packet_8206hr)</a>
@@ -283,10 +289,10 @@
 </li>
       <li><a href="Morelia.Devices.html#Morelia.Devices.PodDevice_8229.Pod8229.decode_day_schedule">decode_day_schedule() (Morelia.Devices.PodDevice_8229.Pod8229 static method)</a>
 </li>
-      <li><a href="Morelia.Devices.html#Morelia.Devices.PodDevice_8229.Pod8229.decode_lcd_schedule">decode_lcd_schedule() (Morelia.Devices.PodDevice_8229.Pod8229 static method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="Morelia.Devices.html#Morelia.Devices.PodDevice_8229.Pod8229.decode_lcd_schedule">decode_lcd_schedule() (Morelia.Devices.PodDevice_8229.Pod8229 static method)</a>
+</li>
       <li><a href="Morelia.packet.html#Morelia.packet.control_packet.ControlPacket.decode_payload_from_cmd_set">decode_payload_from_cmd_set() (Morelia.packet.control_packet.ControlPacket static method)</a>
 </li>
       <li><a href="Morelia.Devices.html#Morelia.Devices.PodDevice_8401HR.Pod8401HR.decode_ss_config_bitmask">decode_ss_config_bitmask() (Morelia.Devices.PodDevice_8401HR.Pod8401HR static method)</a>
@@ -557,6 +563,8 @@
     module
 
       <ul>
+        <li><a href="Morelia.html#module-Morelia">Morelia</a>
+</li>
         <li><a href="Morelia.Commands.html#module-Morelia.Commands">Morelia.Commands</a>
 </li>
         <li><a href="Morelia.Commands.html#module-Morelia.Commands.PodCommands">Morelia.Commands.PodCommands</a>
@@ -613,6 +621,12 @@
 </li>
         <li><a href="Morelia.signal.html#module-Morelia.signal.digital_signal">Morelia.signal.digital_signal</a>
 </li>
+        <li><a href="Morelia.Stream.html#module-Morelia.Stream">Morelia.Stream</a>
+</li>
+        <li><a href="Morelia.Stream.html#module-Morelia.Stream.data_flow">Morelia.Stream.data_flow</a>
+</li>
+        <li><a href="Morelia.Stream.sink.html#module-Morelia.Stream.sink">Morelia.Stream.sink</a>
+</li>
         <li><a href="Morelia.Stream.sink.html#module-Morelia.Stream.sink.csv_sink">Morelia.Stream.sink.csv_sink</a>
 </li>
         <li><a href="Morelia.Stream.sink.html#module-Morelia.Stream.sink.edf_sink">Morelia.Stream.sink.edf_sink</a>
@@ -622,6 +636,13 @@
         <li><a href="Morelia.Stream.sink.html#module-Morelia.Stream.sink.sink_interface">Morelia.Stream.sink.sink_interface</a>
 </li>
         <li><a href="Morelia.Stream.html#module-Morelia.Stream.source">Morelia.Stream.source</a>
+</li>
+      </ul></li>
+      <li>
+    Morelia
+
+      <ul>
+        <li><a href="Morelia.html#module-Morelia">module</a>
 </li>
       </ul></li>
       <li>
@@ -823,6 +844,27 @@
 </li>
       </ul></li>
       <li>
+    Morelia.Stream
+
+      <ul>
+        <li><a href="Morelia.Stream.html#module-Morelia.Stream">module</a>
+</li>
+      </ul></li>
+      <li>
+    Morelia.Stream.data_flow
+
+      <ul>
+        <li><a href="Morelia.Stream.html#module-Morelia.Stream.data_flow">module</a>
+</li>
+      </ul></li>
+      <li>
+    Morelia.Stream.sink
+
+      <ul>
+        <li><a href="Morelia.Stream.sink.html#module-Morelia.Stream.sink">module</a>
+</li>
+      </ul></li>
+      <li>
     Morelia.Stream.sink.csv_sink
 
       <ul>
@@ -899,6 +941,12 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="Morelia.packet.legacy.html#Morelia.packet.legacy.Packet.Packet">Packet (class in Morelia.packet.legacy.Packet)</a>
 </li>
+      <li><a href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8206hr.DataPacket8206HR.packet_counter">packet_counter (Morelia.packet.data.data_packet_8206hr.DataPacket8206HR property)</a>
+
+      <ul>
+        <li><a href="Morelia.packet.data.html#Morelia.packet.data.data_packet_8401hr.DataPacket8401HR.packet_counter">(Morelia.packet.data.data_packet_8401hr.DataPacket8401HR property)</a>
+</li>
+      </ul></li>
       <li><a href="Morelia.packet.legacy.html#Morelia.packet.legacy.Binary.PacketBinary">PacketBinary (class in Morelia.packet.legacy.Binary)</a>
 </li>
       <li><a href="Morelia.packet.html#Morelia.packet.control_packet.ControlPacket.payload">payload (Morelia.packet.control_packet.ControlPacket property)</a>
@@ -939,10 +987,10 @@
 </li>
       <li><a href="Morelia.Devices.html#Morelia.Devices.preamp.Preamp.Preamp8406_BIO">Preamp8406_BIO (Morelia.Devices.preamp.Preamp attribute)</a>
 </li>
-      <li><a href="Morelia.Devices.html#Morelia.Devices.preamp.Preamp.Preamp8406_EEG2BIO">Preamp8406_EEG2BIO (Morelia.Devices.preamp.Preamp attribute)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="Morelia.Devices.html#Morelia.Devices.preamp.Preamp.Preamp8406_EEG2BIO">Preamp8406_EEG2BIO (Morelia.Devices.preamp.Preamp attribute)</a>
+</li>
       <li><a href="Morelia.Devices.html#Morelia.Devices.preamp.Preamp.Preamp8406_SE">Preamp8406_SE (Morelia.Devices.preamp.Preamp attribute)</a>
 </li>
       <li><a href="Morelia.Devices.html#Morelia.Devices.preamp.Preamp.Preamp8406_SE3">Preamp8406_SE3 (Morelia.Devices.preamp.Preamp attribute)</a>
@@ -1001,18 +1049,22 @@
 </li>
       <li><a href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read">read() (Morelia.Devices.SerialPorts.SerialComm.PortIO method)</a>
 </li>
+      <li><a href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_available">read_available() (Morelia.Devices.SerialPorts.SerialComm.PortIO method)</a>
+</li>
       <li><a href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_line">read_line() (Morelia.Devices.SerialPorts.SerialComm.PortIO method)</a>
+</li>
+      <li><a href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_partial">read_partial() (Morelia.Devices.SerialPorts.SerialComm.PortIO method)</a>
 </li>
       <li><a href="Morelia.Devices.html#Morelia.Devices.BasicPodProtocol.Pod.read_pod_packet">read_pod_packet() (Morelia.Devices.BasicPodProtocol.Pod method)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="Morelia.Devices.html#Morelia.Devices.PodDevice_8206HR.Pod8206HR.read_pod_packet_streaming">read_pod_packet_streaming() (Morelia.Devices.PodDevice_8206HR.Pod8206HR method)</a>
 
       <ul>
         <li><a href="Morelia.Devices.html#Morelia.Devices.PodDevice_8401HR.Pod8401HR.read_pod_packet_streaming">(Morelia.Devices.PodDevice_8401HR.Pod8401HR method)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="Morelia.Devices.SerialPorts.html#Morelia.Devices.SerialPorts.SerialComm.PortIO.read_until">read_until() (Morelia.Devices.SerialPorts.SerialComm.PortIO method)</a>
 </li>
       <li><a href="Morelia.Devices.html#Morelia.Devices.BasicPodProtocol.Pod.register_control_queue">register_control_queue() (Morelia.Devices.BasicPodProtocol.Pod method)</a>
@@ -1076,6 +1128,8 @@
       <li><a href="Morelia.Devices.html#Morelia.Devices.PodDevice_8401HR.Pod8401HR.ss_gain_3">ss_gain_3 (Morelia.Devices.PodDevice_8401HR.Pod8401HR property)</a>
 </li>
       <li><a href="Morelia.Devices.html#Morelia.Devices.PodDevice_8480SC.Pod8480SC.stimulus_config_bits">stimulus_config_bits() (Morelia.Devices.PodDevice_8480SC.Pod8480SC static method)</a>
+</li>
+      <li><a href="Morelia.Stream.html#Morelia.Stream.data_flow.DataFlow.stop_collection">stop_collection() (Morelia.Stream.data_flow.DataFlow method)</a>
 </li>
       <li><a href="Morelia.packet.html#Morelia.packet.conversion.string_to_ascii_bytes">string_to_ascii_bytes() (in module Morelia.packet.conversion)</a>
 </li>
