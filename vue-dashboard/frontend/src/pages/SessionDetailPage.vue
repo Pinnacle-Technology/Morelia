@@ -40,6 +40,7 @@ import {
   deriveRatState,
   deriveStreamRows,
   isOutboxUnproven,
+  resolveDetailHealth,
 } from "../session-flow-status";
 import { isRunningLifecycle, normalizeSession } from "../session-utils";
 import { canRunTemplate, loadDeviceTemplates, loadSessionTemplate, templateStateHint } from "../templates-api";
@@ -84,19 +85,16 @@ const activity = ref({ state: SessionEventState.IDLE, events: [], error: null })
 const activityRecords = ref([]);
 const activityRecordsState = ref("loading");
 const activityRecordsError = ref("");
-// A just-created run needs enough time for its first stream reports to settle.
-// Keep the command's truthful Starting result through one complete detail poll
-// before allowing Active health evaluation to appear.
-const STARTING_MIN_DISPLAY_MS = 6000;
 const initialLifecycle = props.initialLifecycle ? formatStatus(props.initialLifecycle) : null;
 const pendingLifecycle = ref(initialLifecycle);
-const startingHoldUntil = initialLifecycle === "Starting"
-  ? Date.now() + STARTING_MIN_DISPLAY_MS
-  : 0;
+// A new run stays in startup until it first qualifies for a green display.
+const awaitingFirstHealthy = ref(
+  ["Preparing", "Scheduled", "Starting", "Active"].includes(initialLifecycle)
+  || ["Preparing", "Scheduled", "Starting"].includes(props.session?.lifecycle),
+);
 let eventStream;
 let pollTimer = null;
 let timingTimer = null;
-let startingHoldTimer = null;
 let activityRefreshTimer = null;
 let detailRefreshTimer = null;
 let sourceTemplateRequest = 0;
@@ -123,11 +121,8 @@ const PLACEHOLDER_SESSION = Object.freeze({
   isOwner: true,
 });
 
-// Everything the page renders comes from here. Precedence is deliberate:
-// /status wins over the catalog row the moment it lands, because the row can be
-// an arbitrarily stale snapshot from whenever the list was last fetched.
-// normalizeSession() is reused rather than re-deriving these fields, so the list
-// view and this page can never drift apart in how they label a session.
+// Prefer /status over the older catalog row. The detail response also carries
+// current stream evidence that can fill an absent session health rollup.
 const view = computed(() => {
   const snapshot = detail.value;
   if (snapshot?.session) {
@@ -137,6 +132,15 @@ const view = computed(() => {
     });
     return {
       ...merged,
+      health: resolveDetailHealth({
+        rawHealth: snapshot.health,
+        lifecycle: merged.lifecycle,
+        phase: snapshot.phase,
+        outboxHealth: snapshot.outbox_health,
+        detailAvailable: detailState.value === "live",
+        streams: streamRows.value,
+        expectedStreamCount: merged.streamCount,
+      }),
       // normalizeSession() can only infer watchdog state from lifecycle; the
       // detail endpoint reports it directly, so prefer the real value.
       watchdog: snapshot.watchdog_state ? formatStatus(snapshot.watchdog_state) : merged.watchdog,
@@ -145,7 +149,12 @@ const view = computed(() => {
   return props.session ?? PLACEHOLDER_SESSION;
 });
 
-const lifecycle = computed(() => pendingLifecycle.value ?? view.value.lifecycle);
+const lifecycle = computed(() => {
+  const current = pendingLifecycle.value ?? view.value.lifecycle;
+  return awaitingFirstHealthy.value && ["Unknown", "Active"].includes(current)
+    ? "Starting"
+    : current;
+});
 const timing = computed(() => sessionTiming({ ...view.value, lifecycle: lifecycle.value }, timingNow.value));
 const stopExplanation = computed(() => sessionStopExplanation(view.value, detail.value?.operations));
 const showSessionHealth = computed(() => !["Starting", "Stopping"].includes(lifecycle.value));
@@ -457,6 +466,22 @@ const flowInputs = computed(() => {
   };
 });
 
+watch(
+  () => ({
+    lifecycle: view.value.lifecycle,
+    tone: deriveFlowStatus({ ...flowInputs.value, lifecycle: view.value.lifecycle }).tone,
+  }),
+  ({ lifecycle: observedLifecycle, tone }) => {
+    if (["Preparing", "Scheduled", "Starting"].includes(observedLifecycle)) {
+      awaitingFirstHealthy.value = true;
+    } else if (["Stopping", "Completed", "Cancelled"].includes(observedLifecycle)
+        || (observedLifecycle === "Active" && tone === "good")) {
+      awaitingFirstHealthy.value = false;
+    }
+  },
+  { immediate: true },
+);
+
 const ratState = computed(() =>
   deriveRatState(deriveFlowStatus(flowInputs.value), streamRows.value),
 );
@@ -676,14 +701,7 @@ async function refreshDetail({ silent = false } = {}) {
     detail.value = await loadSessionDetail(props.sessionId);
     detailState.value = "live";
     detailError.value = "";
-    const serverLifecycle = view.value.lifecycle;
-    const retainStarting = pendingLifecycle.value === "Starting"
-      && Date.now() < startingHoldUntil
-      && ["Unknown", "Starting", "Active"].includes(serverLifecycle);
-    // Stopping/completed/cancelled always win immediately. Active waits until
-    // the startup stabilization window has elapsed so partial telemetry cannot
-    // flash a misleading degraded state as the page opens.
-    if (!retainStarting) pendingLifecycle.value = null;
+    pendingLifecycle.value = null;
     await resolveSourceTemplate();
     await resolveSourceDeviceTemplates();
   } catch (error) {
@@ -804,12 +822,6 @@ async function saveNote() {
 
 onMounted(() => {
   timingTimer = setInterval(() => { timingNow.value = Date.now(); }, 1000);
-  if (startingHoldUntil > Date.now()) {
-    startingHoldTimer = setTimeout(() => {
-      pendingLifecycle.value = null;
-      startingHoldTimer = null;
-    }, startingHoldUntil - Date.now());
-  }
   refreshDetail();
   refreshActivity();
   refreshNotes();
@@ -830,7 +842,6 @@ onUnmounted(() => {
   if (timingTimer) clearInterval(timingTimer);
   eventStream?.stop();
   if (pollTimer) clearInterval(pollTimer);
-  if (startingHoldTimer !== null) clearTimeout(startingHoldTimer);
   if (activityRefreshTimer !== null) clearTimeout(activityRefreshTimer);
   if (detailRefreshTimer !== null) clearTimeout(detailRefreshTimer);
 });
