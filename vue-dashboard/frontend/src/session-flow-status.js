@@ -21,7 +21,7 @@
 // while a pod sat unplugged. The per-device states are carried alongside it, NOT
 // folded into it, so the rail can show which stream and why.
 
-import { isRunningLifecycle } from "./session-utils";
+import { isRunningLifecycle, resolveSessionHealth, SessionHealth } from "./session-utils";
 import { timestampMs } from "./datetime";
 
 export const FlowTone = Object.freeze({
@@ -326,6 +326,29 @@ const UNPROVEN_OUTBOX = new Set(["stale", "overflow"]);
 
 export function isOutboxUnproven(outboxHealth) {
   return UNPROVEN_OUTBOX.has(outboxHealth);
+}
+
+/** Use complete, current stream evidence when the detail response has no health rollup. */
+export function resolveDetailHealth({
+  rawHealth,
+  lifecycle,
+  phase,
+  outboxHealth,
+  detailAvailable = true,
+  streams = [],
+  expectedStreamCount = 0,
+} = {}) {
+  // Poller health can be absent while direct runtime reports continue arriving.
+  // Only fill that absence; explicit backend health still carries other fault signals.
+  if (rawHealth == null && lifecycle === "Active" && phase === "running"
+      && detailAvailable && outboxHealth === "current" && streams.length > 0
+      && streams.length === expectedStreamCount
+      && new Set(streams.map((row) => row.id)).size === expectedStreamCount
+      && streams.every((row) => row.status === "Healthy" && row.tone === FlowTone.GOOD
+        && row.flowing && !row.unproven && !row.pendingRecovery)) {
+    return SessionHealth.HEALTHY;
+  }
+  return resolveSessionHealth(rawHealth, lifecycle);
 }
 
 /** "2s ago" / "4m ago", or null when the runtime has never reported. */

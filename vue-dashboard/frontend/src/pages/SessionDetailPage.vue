@@ -40,6 +40,7 @@ import {
   deriveRatState,
   deriveStreamRows,
   isOutboxUnproven,
+  resolveDetailHealth,
 } from "../session-flow-status";
 import { isRunningLifecycle, normalizeSession } from "../session-utils";
 import { canRunTemplate, loadDeviceTemplates, loadSessionTemplate, templateStateHint } from "../templates-api";
@@ -123,11 +124,8 @@ const PLACEHOLDER_SESSION = Object.freeze({
   isOwner: true,
 });
 
-// Everything the page renders comes from here. Precedence is deliberate:
-// /status wins over the catalog row the moment it lands, because the row can be
-// an arbitrarily stale snapshot from whenever the list was last fetched.
-// normalizeSession() is reused rather than re-deriving these fields, so the list
-// view and this page can never drift apart in how they label a session.
+// Prefer /status over the older catalog row. The detail response also carries
+// current stream evidence that can fill an absent session health rollup.
 const view = computed(() => {
   const snapshot = detail.value;
   if (snapshot?.session) {
@@ -137,6 +135,15 @@ const view = computed(() => {
     });
     return {
       ...merged,
+      health: resolveDetailHealth({
+        rawHealth: snapshot.health,
+        lifecycle: merged.lifecycle,
+        phase: snapshot.phase,
+        outboxHealth: snapshot.outbox_health,
+        detailAvailable: detailState.value === "live",
+        streams: streamRows.value,
+        expectedStreamCount: merged.streamCount,
+      }),
       // normalizeSession() can only infer watchdog state from lifecycle; the
       // detail endpoint reports it directly, so prefer the real value.
       watchdog: snapshot.watchdog_state ? formatStatus(snapshot.watchdog_state) : merged.watchdog,
