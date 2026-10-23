@@ -79,9 +79,10 @@ class ManagedPvfsSinkError(Exception):
 
 
 def _pvfs_writer_target(commands, receipts, config, segment, shutdown_reporter=None):
-    """Write ordered commands and return checked persistence and shutdown receipts."""
+    """Preserve sample positions across missing frames and confirm persisted output."""
     legacy_writer = state = None
     consumed = ordinal = durable = 0
+    missing_frames = skipped_frames = 0
     diagnostic_identity = getattr(commands, "_diagnostic_identity", {})
 
     def emit(kind, **details):
@@ -107,6 +108,27 @@ def _pvfs_writer_target(commands, receipts, config, segment, shutdown_reporter=N
                 actor_pid=os.getpid(),
             )
 
+    def fill_missing_through(sequence, deadline, command):
+        nonlocal consumed, missing_frames
+        if sequence <= consumed:
+            return
+        emit_queue_diagnostic(
+            "pvfs_writer_sequence_gap", **diagnostic_identity,
+            expected_sequence=consumed + 1, received_sequence=command.get("sequence"),
+            missing_last_sequence=sequence, command_kind=command["kind"],
+            missing_frame_count=sequence - consumed, resolution="fill_nan",
+        )
+        placeholder = {"values": (float("nan"),) * len(config["channels"]),
+                       "recorded": False}
+        # Missing positions advance the sample clock but cannot prove real data arrived.
+        while consumed < sequence:
+            if time.monotonic() >= deadline:
+                raise ManagedPvfsSinkError("PVFS gap fill deadline expired")
+            consumed += 1
+            ack = ManagedPvfsSink._append_legacy_writer_frame(legacy_writer, state, placeholder)
+            missing_frames += 1
+            publish(ack)
+
     try:
         legacy_writer, state = ManagedPvfsSink._create_legacy_writer(config)
         emit("ready")
@@ -118,30 +140,44 @@ def _pvfs_writer_target(commands, receipts, config, segment, shutdown_reporter=N
             if kind == "frame":
                 if set(command) != {"kind", "segment", "sequence", "values", "recorded"}:
                     raise ManagedPvfsSinkError("PVFS frame schema mismatch")
-                if type(command["sequence"]) is not int or command["sequence"] != consumed + 1:
-                    emit_queue_diagnostic("pvfs_writer_sequence_gap", **diagnostic_identity,
-                                          expected_sequence=consumed + 1,
-                                          received_sequence=command["sequence"])
-                    raise ManagedPvfsSinkError("PVFS frame sequence is not contiguous")
+                if type(command["sequence"]) is not int or command["sequence"] <= 0:
+                    raise ManagedPvfsSinkError("PVFS frame sequence is invalid")
                 if (type(command["recorded"]) is not bool
                         or not isinstance(command["values"], (tuple, list))
+                        or len(command["values"]) != len(config["channels"])
                         or any(type(value) is not float or math.isinf(value) or
                                (command["recorded"] and math.isnan(value))
                                for value in command["values"])):
                     raise ManagedPvfsSinkError("PVFS frame values are not normalized")
+                if command["sequence"] <= consumed:
+                    skipped_frames += 1
+                    emit_queue_diagnostic(
+                        "pvfs_writer_late_frame", **diagnostic_identity,
+                        received_sequence=command["sequence"], last_received_sequence=consumed,
+                        resolution="skip", skipped_frame_count=skipped_frames,
+                    )
+                    continue
+                fill_missing_through(command["sequence"] - 1,
+                                     time.monotonic() + _CHECKPOINT_TIMEOUT, command)
                 consumed += 1
                 publish(ManagedPvfsSink._append_legacy_writer_frame(legacy_writer, state, command))
             elif kind in {"flush", "close"}:
                 if set(command) != {"kind", "segment", "last_sequence", "frame_count",
                                     "checkpoint_id", "deadline"}:
                     raise ManagedPvfsSinkError("PVFS barrier schema mismatch")
-                if any(type(command[key]) is not int or command[key] != consumed
-                       for key in ("last_sequence", "frame_count")):
+                if (any(type(command[key]) is not int for key in ("last_sequence", "frame_count"))
+                        or command["last_sequence"] != command["frame_count"]
+                        or command["last_sequence"] < consumed):
                     raise ManagedPvfsSinkError("PVFS barrier does not match consumed frames")
+                if (type(command["checkpoint_id"]) is not int or command["checkpoint_id"] <= 0
+                        or type(command["deadline"]) not in (int, float)
+                        or not math.isfinite(command["deadline"])):
+                    raise ManagedPvfsSinkError("PVFS barrier checkpoint or deadline is invalid")
                 if time.monotonic() >= command["deadline"]:
                     raise ManagedPvfsSinkError("PVFS command deadline expired")
                 if kind == "close":
                     report("writer_stop_observed")
+                fill_missing_through(command["last_sequence"], command["deadline"], command)
                 publish(ManagedPvfsSink._flush_legacy_writer(legacy_writer, state))
                 if kind == "flush":
                     emit("flushed", checkpoint_id=command["checkpoint_id"])
@@ -149,7 +185,9 @@ def _pvfs_writer_target(commands, receipts, config, segment, shutdown_reporter=N
                 report("writer_queue_drained")
                 emit_queue_diagnostic("pvfs_writer_drain_summary", **diagnostic_identity,
                                       last_received_sequence=consumed,
-                                      samples_written=state["confirmed"])
+                                      samples_written=state["confirmed"],
+                                      missing_frame_count=missing_frames,
+                                      skipped_frame_count=skipped_frames)
                 report("writer_native_flushed")
                 result = ManagedPvfsSink._close_legacy_writer(legacy_writer, state)
                 publish(result["ack"])
