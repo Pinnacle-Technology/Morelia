@@ -66,22 +66,31 @@ class _FeederDiagnostics:
 class DiagnosticQueue(Queue):
     """Keep normal queue delivery while labeling asynchronous feeder failures."""
 
-    def __init__(self, purpose: str, *, ctx=None, **identity):
+    def __init__(self, purpose: str, *, ctx=None, maxsize=0, resource_retry_seconds=0, **identity):
         self._diagnostic_identity = {**identity, "queue_purpose": purpose,
                                      "queue_id": uuid4().hex, "creator_pid": os.getpid()}
-        super().__init__(ctx=ctx or mp.get_context())
+        self._resource_retry_seconds = resource_retry_seconds
+        super().__init__(maxsize=maxsize, ctx=ctx or mp.get_context())
 
     def __getstate__(self):
-        return super().__getstate__(), self._diagnostic_identity
+        return super().__getstate__(), self._diagnostic_identity, self._resource_retry_seconds
 
     def __setstate__(self, state):
-        base, self._diagnostic_identity = state
+        base, self._diagnostic_identity, self._resource_retry_seconds = state
         super().__setstate__(base)
 
     def _reset(self, after_fork=False):
         super()._reset(after_fork=after_fork)
         diagnostics = _FeederDiagnostics(self._diagnostic_identity)
         send = self._send_bytes
+        self._resource_retry = None
+        if self._resource_retry_seconds:
+            from app.runtime_child.queue_resource_retry import ResourceRetry
+
+            self._resource_retry = ResourceRetry(
+                self._writer, self._resource_retry_seconds, self._diagnostic_identity,
+            )
+            send = self._resource_retry.send
 
         def send_bytes(data):
             diagnostics.send_attempt += 1
@@ -90,6 +99,28 @@ class DiagnosticQueue(Queue):
         # The feeder must not retain the queue itself and prevent its finalizer.
         self._send_bytes = send_bytes
         self._on_queue_feeder_error = diagnostics.failed
+        if self._resource_retry is not None:
+            retry = self._resource_retry
+            reported = False
+
+            def failed(exc, obj):
+                nonlocal reported
+                retry.failure = retry.failure or f"{type(exc).__name__}: {exc}"
+                if not reported:
+                    reported = True
+                    diagnostics.failed(exc, obj)
+
+            self._on_queue_feeder_error = failed
+            retry.on_completion_error = failed
+
+    @property
+    def transport_error(self):
+        return None if self._resource_retry is None else self._resource_retry.failure
+
+    def cancel_pending_writes(self):
+        """Interrupt resource retries after the owner finishes or abandons shutdown."""
+        if self._resource_retry is not None:
+            self._resource_retry.cancel.set()
 
 
 def label_queue(queue, **identity):

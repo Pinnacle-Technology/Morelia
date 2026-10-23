@@ -166,6 +166,8 @@ def test_real_pvfs_writer_rejects_sequence_gap_and_preserves_confirmed_samples(a
         sink.open()
         queue = sink._writer_queue
         send = queue._writer.send_bytes
+        # Keep the original drop path as a negative control for resource retries.
+        queue._resource_retry_seconds = 0
 
         def fail_sixth_frame(data):
             if pickle.loads(data).get("sequence") == 6:

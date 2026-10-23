@@ -32,7 +32,7 @@ from collections.abc import Callable, Iterable
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from queue import Empty
+from queue import Empty, Full
 from threading import Condition, Thread, get_ident, local
 from types import SimpleNamespace
 from uuid import uuid4
@@ -55,6 +55,8 @@ _log = structlog.get_logger(__name__)
 _WRITER_JOIN_TIMEOUT = 15.0
 _WRITER_TERMINATE_TIMEOUT = 2.0
 _CHECKPOINT_TIMEOUT = 10.0
+_RESOURCE_RETRY_SECONDS = 35.0
+_WRITER_BUFFER_SECONDS = 35.0
 
 _DEFAULT_SAMPLE_RATE = 400.0
 
@@ -461,10 +463,13 @@ class ManagedPvfsSink:
                     if not self.writer_alive:
                         raise ManagedPvfsSinkError("PVFS writer is not alive")
                     sequence = self._accepted_sequence + 1
-                    self._writer_queue.put_nowait({
-                        "kind": "frame", "segment": self._record.output_id,
-                        "sequence": sequence, "values": tuple(values), "recorded": bool(recorded),
-                    })
+                    try:
+                        self._writer_queue.put_nowait({
+                            "kind": "frame", "segment": self._record.output_id,
+                            "sequence": sequence, "values": tuple(values), "recorded": bool(recorded),
+                        })
+                    except Full as exc:
+                        raise ManagedPvfsSinkError("PVFS transport frame buffer is full") from exc
                     self._accepted_sequence = sequence
                 self._persist_progress()
             except BaseException as exc:
@@ -498,14 +503,16 @@ class ManagedPvfsSink:
         self.write_frame(values, timestamp=row.get("timestamp", row.get("time")))
 
     def flush(self, *args: object) -> None:
-        """Persist buffered samples within ten seconds, or accept a timestamp and packet.
+        """Persist buffered samples, or accept a timestamp and packet.
 
-        Checkpoints include preceding recording notifications. A timeout permits
-        cleanup only. Local native calls require external process supervision.
+        Process checkpoints allow the resource retry window before the normal
+        flush budget. A timeout permits cleanup only. Local native calls require
+        external process supervision.
         """
         self._check_available()
         if not args:
-            deadline = self._operation_deadline(_CHECKPOINT_TIMEOUT)
+            budget = _CHECKPOINT_TIMEOUT + (_RESOURCE_RETRY_SECONDS if self._use_writer_process else 0)
+            deadline = self._operation_deadline(budget)
             if not self._opened:
                 return
             try:
@@ -826,6 +833,8 @@ class ManagedPvfsSink:
 
     def _check_available(self):
         self._guard_callback()
+        if self._writer_queue is not None and self._writer_queue.transport_error is not None:
+            self._fail("PVFS transport failed: " + self._writer_queue.transport_error)
         if self._terminal_error is not None or self._closed or self._startup_error is not None:
             raise ManagedPvfsSinkError(
                 "PVFS sink is unavailable: " + (self._terminal_error or "closed"))
@@ -883,7 +892,11 @@ class ManagedPvfsSink:
         context = mp.get_context("spawn")
         identity = {"device_id": self._device_id, "sink_id": self._sink_id,
                     "dataflow_id": self._dataflow_id, "output_id": self._record.output_id}
-        self._writer_queue = DiagnosticQueue("pvfs_samples", ctx=context, **identity)
+        self._writer_queue = DiagnosticQueue(
+            "pvfs_samples", ctx=context,
+            maxsize=max(1, math.ceil(self._sample_rate * _WRITER_BUFFER_SECONDS)),
+            resource_retry_seconds=_RESOURCE_RETRY_SECONDS, **identity,
+        )
         self._writer_recording_queue = DiagnosticQueue("pvfs_recording_ack", ctx=context, **identity)
         self._writer_proc = context.Process(target=_pvfs_writer_target, args=(
             self._writer_queue, self._writer_recording_queue,
@@ -908,6 +921,9 @@ class ManagedPvfsSink:
             try:
                 receipt = queue.get(timeout=0.1)
             except Empty:
+                if self._writer_queue is not None and self._writer_queue.transport_error is not None:
+                    self._fail("PVFS transport failed: " + self._writer_queue.transport_error)
+                    return
                 if self._writer_proc is not None and not self._writer_proc.is_alive():
                     self._fail("PVFS writer exited without terminal receipt")
                     return
@@ -1181,6 +1197,7 @@ class ManagedPvfsSink:
                 self._fail(str(self._recording_error))
         for queue in (self._writer_queue, self._writer_recording_queue):
             if queue is not None:
+                queue.cancel_pending_writes()
                 queue.cancel_join_thread()
                 queue.close()
         self._writer_proc = None
