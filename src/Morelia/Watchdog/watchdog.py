@@ -1513,7 +1513,7 @@ class StreamWatcher (threading.Thread):
             return self._block_recovery(
                 base,
                 reason="port_release_timeout",
-                error=("Port recovery timed out after 15 seconds. Automatic recovery stopped. "
+                error=(f"Port recovery timed out after {self._port_release_timeout_sec:g} seconds. Automatic recovery stopped. "
                        "Check the device connection and close other programs using it before retrying."),
                 **details,
             )
@@ -1958,18 +1958,13 @@ class StreamWatcher (threading.Thread):
             if self._response_grace is not None:
                 return self._advance_response_grace(base)
 
-            if (self._port_release_started_at is not None
-                    and time.monotonic() - self._port_release_started_at >= self._port_release_timeout_sec):
-                return self._wait_for_port_release(base)
-
             if self._recovery_progress is None:
                 self._set_recovery_progress("detected")
             self._publish_recovery_progress("checking_presence", base)
-            #Check if any port is available
             try:
                 port_present = m.is_stream_port_present(self.stream_index)
             except Exception as error:
-                return {#if anything goes wrong when doing port check
+                return {
                     **base,
                     "ok": False,
                     "action": "port_check_failed",
@@ -1977,12 +1972,9 @@ class StreamWatcher (threading.Thread):
                     "error": f"{type(error).__name__}: {error}",
                 }
             base["hardware_present"] = port_present
-            #if port is unavailable, wait
             if not port_present:
                 self._port_release_started_at = None
-                # Port vanished again -> a new unplug/replug sub-episode. Refresh
-                # the auto-restart budget so the next replug gets a full set of
-                # attempts instead of inheriting a half-spent count.
+                # A new unplug/replug episode gets a fresh restart budget.
                 self._recovery_attempt_count = 0
                 return {
                     **base,
@@ -1990,11 +1982,15 @@ class StreamWatcher (threading.Thread):
                     "action": "waiting_for_port",
                     "failure_reason": "waiting_for_port",
                 }
+            # An unplug clears the access deadline before it can block recovery.
+            if (self._port_release_started_at is not None
+                    and time.monotonic() - self._port_release_started_at >= self._port_release_timeout_sec):
+                return self._wait_for_port_release(base)
             self._publish_recovery_progress("checking_port", base)
-            #if port exist but cant be opened, wait until next tick and retry
             if not m.is_stream_port_openable(self.stream_index):
                 return self._wait_for_port_release(base)
-            #if port exist and can be opened, restart stream
+            port_present = True
+            base["hardware_present"] = True
             # Cooling down after a worker crashed on its cold open: don't respawn
             # a doomed worker every tick while the device finishes settling. The
             # port is still probed above, so we keep polling and come back on our
