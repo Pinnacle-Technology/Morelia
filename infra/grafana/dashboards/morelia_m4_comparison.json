@@ -1,0 +1,614 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Device signals in a single graph with independent CH0–CH2 and TTL1–TTL4 visibility controls. The default refresh interval is 500 ms. Data detail controls aggregation independently. Data is selected by device and is not isolated to a session.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "fepg8hwzyq9dsd"
+      },
+      "description": "Raw displays samples without aggregation. Other modes retain the first, minimum, maximum, and last samples per time window. Auto uses the interval calculated by Grafana; fixed modes use the selected interval. Refresh frequency is independent.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "displayName": "${__field.labels.channel}",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CH0"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#73BF69",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value":2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CH1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2CC0C",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CH2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#5794F2",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CHA"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#73BF69",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CHB"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2CC0C",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CHC"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#5794F2",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CHD"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF9830",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "aEXT0"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#B877D9",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "aEXT1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF7383",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "TTL1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#56A64B",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "TTL2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#C8F2C2",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "TTL3"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FADE2A",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "TTL4"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#B8D9F9",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CH5"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#73BF69",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CH6"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2CC0C",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CH7"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#5794F2",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 21,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 2,
+      "interval": "1ms",
+      "maxDataPoints": 600,
+      "options": {
+        "legend": {
+          "calcs": [
+            "min",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.6.5",
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "fepg8hwzyq9dsd"
+          },
+          "query": "detail = ${data_detail:doublequote}\n\nreadData = () =>\n    from(bucket: ${bucket:doublequote})\n        |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n        |> filter(fn: (r) =>\n            r._measurement == ${measurement:doublequote} and\n            r._field == \"value\" and\n            r.name == ${device:doublequote} and\n            (r.channel !~ /^CH[0-2]$/ or r.channel =~ /^(${show_ch:regex})$/) and\n            (r.channel !~ /^TTL[1-4]$/ or r.channel =~ /^(${show_ttl:regex})$/)\n        )\n\nm4 = () => {\n    width = if detail == \"auto\" then v.windowPeriod else duration(v: detail)\n    keys = [\"_measurement\", \"_field\", \"name\", \"channel\"]\n\n    firstPoints = readData()\n        |> window(every: width, createEmpty: false)\n        |> first()\n        |> group(columns: keys)\n\n    minPoints = readData()\n        |> window(every: width, createEmpty: false)\n        |> min()\n        |> group(columns: keys)\n\n    maxPoints = readData()\n        |> window(every: width, createEmpty: false)\n        |> max()\n        |> group(columns: keys)\n\n    lastPoints = readData()\n        |> window(every: width, createEmpty: false)\n        |> last()\n        |> group(columns: keys)\n\n    return union(tables: [\n        firstPoints, minPoints, maxPoints, lastPoints\n    ])\n        |> unique(column: \"_time\")\n        |> sort(columns: [\"_time\"])\n        |> keep(columns: [\n            \"_time\", \"_value\", \"_measurement\",\n            \"_field\", \"name\", \"channel\"\n        ])\n}\n\nresult = if detail == \"raw\" then readData() else m4()\nresult |> yield(name: \"selected_detail\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Selected detail (${data_detail:text}) - ${device}",
+      "type": "timeseries"
+    }
+  ],
+  "preload": false,
+  "refresh": "500ms",
+  "schemaVersion": 41,
+  "tags": [
+    "morelia",
+    "m4"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "recordings",
+          "value": "recordings"
+        },
+        "label": "Bucket",
+        "name": "bucket",
+        "options": [
+          {
+            "selected": true,
+            "text": "recordings",
+            "value": "recordings"
+          }
+        ],
+        "query": "recordings",
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "text": "default-measurement",
+          "value": "default-measurement"
+        },
+        "label": "Measurement",
+        "name": "measurement",
+        "options": [
+          {
+            "selected": true,
+            "text": "default-measurement",
+            "value": "default-measurement"
+          }
+        ],
+        "query": "default-measurement",
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "text": "device-templates/8206bob.toml",
+          "value": "device-templates/8206bob.toml"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "fepg8hwzyq9dsd"
+        },
+        "includeAll": false,
+        "label": "Device",
+        "name": "device",
+        "options": [],
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: ${bucket:doublequote}, tag: \"name\", predicate: (r) => r._measurement == ${measurement:doublequote} and r._field == \"value\", start: -30d)",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "text": "50ms",
+          "value": "50ms"
+        },
+        "description": "Raw displays samples without aggregation. Other modes retain the first, minimum, maximum, and last samples per time window. Auto uses the interval calculated by Grafana; fixed modes use the selected interval. Refresh frequency is independent.",
+        "includeAll": false,
+        "label": "Data detail",
+        "name": "data_detail",
+        "options": [
+          {
+            "selected": false,
+            "text": "Raw - all samples",
+            "value": "raw"
+          },
+          {
+            "selected": false,
+            "text": "Auto",
+            "value": "auto"
+          },
+          {
+            "selected": false,
+            "text": "10ms",
+            "value": "10ms"
+          },
+          {
+            "selected": false,
+            "text": "25ms",
+            "value": "25ms"
+          },
+          {
+            "selected": true,
+            "text": "50ms",
+            "value": "50ms"
+          },
+          {
+            "selected": false,
+            "text": "100ms",
+            "value": "100ms"
+          },
+          {
+            "selected": false,
+            "text": "250ms",
+            "value": "250ms"
+          },
+          {
+            "selected": false,
+            "text": "500ms",
+            "value": "500ms"
+          },
+          {
+            "selected": false,
+            "text": "1s",
+            "value": "1s"
+          }
+        ],
+        "query": "Raw - all samples : raw,Auto : auto,10ms,25ms,50ms,100ms,250ms,500ms,1s",
+        "type": "custom"
+      },
+      {
+        "allowCustomValue": false,
+        "current": {
+          "text": [
+            "CH0",
+            "CH1",
+            "CH2"
+          ],
+          "value": [
+            "CH0",
+            "CH1",
+            "CH2"
+          ]
+        },
+        "description": "Select the CH0–CH2 analog channels to display. None hides this group; TTL selections are independent.",
+        "includeAll": false,
+        "label": "CH0–CH2",
+        "multi": true,
+        "name": "show_ch",
+        "options": [
+          {
+            "selected": false,
+            "text": "None",
+            "value": "__none__"
+          },
+          {
+            "selected": true,
+            "text": "CH0",
+            "value": "CH0"
+          },
+          {
+            "selected": true,
+            "text": "CH1",
+            "value": "CH1"
+          },
+          {
+            "selected": true,
+            "text": "CH2",
+            "value": "CH2"
+          }
+        ],
+        "query": "None : __none__,CH0,CH1,CH2",
+        "type": "custom"
+      },
+      {
+        "allowCustomValue": false,
+        "current": {
+          "text": [
+            "TTL1",
+            "TTL2",
+            "TTL3",
+            "TTL4"
+          ],
+          "value": [
+            "TTL1",
+            "TTL2",
+            "TTL3",
+            "TTL4"
+          ]
+        },
+        "description": "Select the TTL channels to display. None hides this group; CH0–CH2 selections are independent.",
+        "includeAll": false,
+        "label": "TTL1–TTL4",
+        "multi": true,
+        "name": "show_ttl",
+        "options": [
+          {
+            "selected": false,
+            "text": "None",
+            "value": "__none__"
+          },
+          {
+            "selected": true,
+            "text": "TTL1",
+            "value": "TTL1"
+          },
+          {
+            "selected": true,
+            "text": "TTL2",
+            "value": "TTL2"
+          },
+          {
+            "selected": true,
+            "text": "TTL3",
+            "value": "TTL3"
+          },
+          {
+            "selected": true,
+            "text": "TTL4",
+            "value": "TTL4"
+          }
+        ],
+        "query": "None : __none__,TTL1,TTL2,TTL3,TTL4",
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30s",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "500ms",
+      "1s",
+      "2s",
+      "5s",
+      "10s",
+      "30s"
+    ]
+  },
+  "timezone": "browser",
+  "title": "Morelia Signal Viewer",
+  "uid": "morelia-m4-comparison",
+  "version": 1
+}
