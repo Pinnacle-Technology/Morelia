@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from copy import deepcopy
+import sys
 import threading
 import time
+from collections.abc import Callable
+from copy import deepcopy
 
+from app.diagnostic_events import diagnostic_operation
+from app.discovery.windows_usb_presence import (
+    list_present_native_endpoints as list_windows_usb_endpoints,
+)
 from app.domain.connections import normalize_connection, normalize_resolved_connection
 from app.domain.enums import DeviceType
 from app.services.device_ports import PortResolutionError
@@ -31,26 +36,36 @@ class EndpointInventoryCache:
         self._ttl_seconds = ttl_seconds
         self._clock = clock if clock is not None else time.monotonic
         self._lock_timeout_seconds = lock_timeout_seconds
-        self._locks = {transport: threading.Lock() for transport in ("vcp", "d2xx")}
+        self._locks = {transport: threading.Lock() for transport in ("vcp", "d2xx", "windows_usb")}
         self._snapshots: dict[str, tuple[float, list[dict[str, object]]]] = {}
 
     def get(self, transport: str) -> list[dict[str, object]]:
-        lock = self._locks[transport]
-        # A stalled scan must not indefinitely hold up other watchers.
-        if not lock.acquire(timeout=self._lock_timeout_seconds):
-            raise TimeoutError(f"Timed out waiting for {transport} inventory")
-        try:
-            now = self._clock()
-            snapshot = self._snapshots.get(transport)
-            if snapshot is not None and now - snapshot[0] < self._ttl_seconds:
-                return deepcopy(snapshot[1])
-            self._snapshots.pop(transport, None)
-            rows = list_vcp_endpoints() if transport == "vcp" else list_native_endpoints()
-            # Slow scans must not extend the freshness of their observations.
-            self._snapshots[transport] = (now, deepcopy(rows))
-            return deepcopy(rows)
-        finally:
-            lock.release()
+        with diagnostic_operation("inventory_cache", transport=transport) as evidence:
+            evidence.update(stage="cache_lock", ttl_seconds=self._ttl_seconds)
+            lock = self._locks[transport]
+            # A stalled scan must not indefinitely hold up other watchers.
+            if not lock.acquire(timeout=self._lock_timeout_seconds):
+                raise TimeoutError(f"Timed out waiting for {transport} inventory")
+            try:
+                now = self._clock()
+                snapshot = self._snapshots.get(transport)
+                if snapshot is not None and now - snapshot[0] < self._ttl_seconds:
+                    evidence.update(stage="complete", cached=True,
+                                    cache_age_ms=round((now - snapshot[0]) * 1000, 3),
+                                    rows=snapshot[1], returned_count=len(snapshot[1]))
+                    return deepcopy(snapshot[1])
+                self._snapshots.pop(transport, None)
+                evidence.update(stage="enumerate", cached=False, cache_age_ms=0)
+                if transport == "windows_usb":
+                    rows = list_windows_usb_endpoints()
+                else:
+                    rows = list_vcp_endpoints() if transport == "vcp" else list_native_endpoints()
+                # Slow scans must not extend the freshness of their observations.
+                self._snapshots[transport] = (now, deepcopy(rows))
+                evidence.update(stage="complete", rows=rows, returned_count=len(rows))
+                return deepcopy(rows)
+            finally:
+                lock.release()
 
 
 def list_vcp_endpoints() -> list[dict[str, object]]:
@@ -177,12 +192,16 @@ def resolve_connection(
 def native_connection_present(
     resolved: dict, *, inventory: EndpointInventoryCache | None = None,
 ) -> bool:
-    """Observe the frozen native selector, without requiring its logical alias.
+    """Locate the native device, using Windows USB presence for blank D2XX entries."""
+    with diagnostic_operation("native_presence", transport="d2xx",
+                              port=resolved.get("address") if isinstance(resolved, dict) else None,
+                              hardware_id=resolved.get("hardware_id") if isinstance(resolved, dict) else None) as evidence:
+        return _native_connection_present(resolved, inventory=inventory, evidence=evidence)
 
-    A blank descriptor may conceal the target, so incomplete inventory is an
-    observation failure rather than proof of absence. Opening remains separate.
-    """
+
+def _native_connection_present(resolved, *, inventory, evidence):
     frozen = normalize_resolved_connection(resolved)
+    evidence.update(stage="enumerate", target=frozen, present=None, presence_source="d2xx")
     if frozen["transport"] != "d2xx":
         raise ValueError("Native presence requires a frozen D2XX binding")
     try:
@@ -194,6 +213,9 @@ def native_connection_present(
     matches = [row for row in rows if row.get("address") == serial]
     related = [row for row in rows if row.get("hardware_id") == logical
                or logical in row.get("aliases", ()) or row.get("address") == serial]
+    evidence.update(stage="match_identity", rows=rows, returned_count=len(rows),
+                    match_count=len(matches), unidentified_count=sum(
+                        not row.get("address") or not row.get("hardware_id") for row in rows))
     if len(matches) > 1 or any(
         row.get("identity_conflict")
         or row.get("physical_id", row.get("address")) != serial
@@ -202,10 +224,41 @@ def native_connection_present(
     ):
         raise ConnectionResolutionError("identity_ambiguous", "Frozen native physical identity has conflicting evidence")
     if matches:
+        evidence.update(stage="complete", present=True)
         return True
     if any(not row.get("address") or not row.get("hardware_id") for row in rows):
+        if sys.platform == "win32":
+            return _windows_native_present(serial, inventory=inventory, evidence=evidence)
         raise ConnectionResolutionError("identity_unavailable", "Native inventory contains unidentified interfaces; presence is unknown")
+    evidence.update(stage="complete", present=False)
     return False
+
+
+def _windows_native_present(serial, *, inventory, evidence):
+    evidence.update(stage="windows_usb_presence", presence_source="windows_pnp")
+    try:
+        rows = (
+            inventory.get("windows_usb") if inventory is not None else list_windows_usb_endpoints()
+        )
+    except Exception as exc:
+        raise ConnectionResolutionError(
+            "enumeration_failed", f"Windows USB presence observation failed: {exc}",
+        ) from exc
+    # Windows device instance IDs are case-insensitive. The D2XX open selector stays exact.
+    matches = [row for row in rows if (row.get("address") or "").casefold() == serial.casefold()]
+    evidence.update(windows_rows=rows, windows_match_count=len(matches))
+    if len(matches) > 1:
+        raise ConnectionResolutionError(
+            "identity_ambiguous", "Multiple present USB devices match the native serial",
+        )
+    if not matches and any(not row.get("address") for row in rows):
+        raise ConnectionResolutionError(
+            "identity_unavailable",
+            "Windows USB inventory contains an unsupported or unidentified FTDI device",
+        )
+    present = bool(matches)
+    evidence.update(stage="complete", present=present)
+    return present
 
 
 def validate_current_connection(resolved: dict) -> dict:
