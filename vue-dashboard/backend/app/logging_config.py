@@ -9,6 +9,8 @@ from typing import Any
 
 import structlog
 
+from app.diagnostic_events import sanitize_evidence
+
 SAFE_LOG_FIELDS = frozenset(
     {
         # Core event metadata.
@@ -110,6 +112,12 @@ SAFE_LOG_FIELDS = frozenset(
         "disconnect_elapsed_seconds",
         "disconnect_recording_continued",
         "max_heartbeat_age_seconds",
+        "transport",
+        "hardware_id",
+        "hardware_present",
+        "evidence",
+        "suppressed_count",
+        "previous_outcome",
     }
 )
 
@@ -168,7 +176,10 @@ def retain_safe_log_fields(
     event_dict: dict[str, Any],
 ) -> dict[str, Any]:
     """Drop every field that is not explicitly approved for log output."""
-    return {key: value for key, value in event_dict.items() if key in SAFE_LOG_FIELDS}
+    safe = {key: value for key, value in event_dict.items() if key in SAFE_LOG_FIELDS}
+    if "evidence" in safe:
+        safe["evidence"] = sanitize_evidence(safe["evidence"])
+    return safe
 
 
 def configure_logging(

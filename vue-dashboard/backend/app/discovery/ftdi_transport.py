@@ -7,10 +7,13 @@ does not enumerate or open USB devices.
 from __future__ import annotations
 
 import math
+import sys
 import time
 from contextlib import contextmanager
 from ctypes import byref
 from threading import RLock
+
+from app.diagnostic_events import descriptor_evidence, diagnostic_operation
 
 from .native_gate import native_driver_gate
 
@@ -130,22 +133,35 @@ def serial_text(value):
 
 def list_d2xx_devices(*, native_only=True):
     """Read one D2XX inventory snapshot without changing device serial strings."""
-    if ftd is None:
-        raise ImportError("Native D2XX requires ftd2xx and the FTDI native library")
-    with native_driver_gate():
-        rows = []
-        for index in range(ftd.createDeviceInfoList()):
-            info = ftd.getDeviceInfoDetail(index, update=False)
-            if not isinstance(info, dict):
-                raise ValueError("Unrecognized FTDI device descriptor")
-            rows.append({
-                "index": index, "serial": serial_text(info.get("serial")),
-                "description": serial_text(info.get("description")),
-                "flags": info.get("flags", 0), "type": info.get("type"),
-                "id": info.get("id"), "location": info.get("location", info.get("locid")),
-                "backend": "ftd2xx",
-            })
-        return rows
+    with diagnostic_operation("native_inventory", transport="d2xx") as evidence:
+        evidence.update(stage="driver_available", rows=[], expected_count=None, returned_count=0,
+                        python_executable=sys.executable,
+                        driver_module=getattr(ftd, "__file__", None), platform=sys.platform)
+        if ftd is None:
+            raise ImportError("Native D2XX requires ftd2xx and the FTDI native library")
+        evidence["stage"] = "driver_gate"
+        with native_driver_gate():
+            rows = []
+            evidence["stage"] = "create_device_info_list"
+            count = ftd.createDeviceInfoList()
+            evidence["expected_count"] = count
+            for index in range(count):
+                evidence.update(stage="get_device_info_detail", failed_index=index)
+                info = ftd.getDeviceInfoDetail(index, update=False)
+                evidence["rows"].append(descriptor_evidence(index, info))
+                evidence["stage"] = "decode_descriptor"
+                if not isinstance(info, dict):
+                    raise ValueError("Unrecognized FTDI device descriptor")
+                rows.append({
+                    "index": index, "serial": serial_text(info.get("serial")),
+                    "description": serial_text(info.get("description")),
+                    "flags": info.get("flags", 0), "type": info.get("type"),
+                    "id": info.get("id"), "location": info.get("location", info.get("locid")),
+                    "backend": "ftd2xx",
+                })
+                evidence["returned_count"] = len(rows)
+            evidence.update(stage="complete", failed_index=None, returned_count=len(rows))
+            return rows
 
 
 class _DeadlinePort:
@@ -210,42 +226,61 @@ class D2XXPortIO(_DeadlinePort):
         self.port, self.baudrate = port, baudrate
         if not isinstance(port, str) or not port or port != port.strip():
             raise ValueError("Managed D2XX connections require a nonempty exact serial string")
-        with native_driver_gate():
-            retry_pending_cleanup(port)
-            try:
-                # Open the resolved serial directly because inventory can omit
-                # devices while other interfaces are open.
-                self._ftd2xx_handle = _open_native_serial(port)
-                info = self._ftd2xx_handle.getDeviceInfo()
-                if not isinstance(info, dict) or serial_text(info.get("serial")) != port:
-                    raise ValueError("Opened FTDI identity differs from requested serial")
-                handle = self._ftd2xx_handle
-                handle.setBaudRate(baudrate)
-                handle.setDataCharacteristics(8, 0, 0)
-                handle.setFlowControl(256 if self.flow_control == "rts_cts" else 0, 0x11, 0x13)
-                handle.setTimeouts(read_timeout_ms, write_timeout_ms)
-                self._cached_timeouts = (read_timeout_ms, write_timeout_ms)
-                handle.purge(3)
-            except BaseException as operation_error:
-                _close_after_failure(self._close_handle, operation_error, port)
-                raise
+        with diagnostic_operation("native_open", transport="d2xx", port=port) as evidence:
+            evidence.update(stage="driver_gate", baudrate=baudrate, flow_control=self.flow_control,
+                            read_timeout_ms=read_timeout_ms, write_timeout_ms=write_timeout_ms)
+            with native_driver_gate():
+                evidence["stage"] = "pending_cleanup"
+                retry_pending_cleanup(port)
+                try:
+                    # Open the exact serial and verify the handle before configuring it.
+                    evidence["stage"] = "open_by_serial"
+                    self._ftd2xx_handle = _open_native_serial(port)
+                    evidence["stage"] = "verify_identity"
+                    info = self._ftd2xx_handle.getDeviceInfo()
+                    evidence["rows"] = [descriptor_evidence(None, info)]
+                    if not isinstance(info, dict) or serial_text(info.get("serial")) != port:
+                        raise ValueError("Opened FTDI identity differs from requested serial")
+                    handle = self._ftd2xx_handle
+                    evidence["stage"] = "configure_handle"
+                    handle.setBaudRate(baudrate)
+                    handle.setDataCharacteristics(8, 0, 0)
+                    handle.setFlowControl(256 if self.flow_control == "rts_cts" else 0, 0x11, 0x13)
+                    handle.setTimeouts(read_timeout_ms, write_timeout_ms)
+                    self._cached_timeouts = (read_timeout_ms, write_timeout_ms)
+                    handle.purge(3)
+                    evidence["stage"] = "complete"
+                except BaseException as operation_error:
+                    try:
+                        _close_after_failure(self._close_handle, operation_error, port)
+                    finally:
+                        evidence["handle_retained"] = self._ftd2xx_handle is not None
+                        evidence["cleanup_pending"] = pending_cleanup(port) is not None
+                    raise
 
     def is_serial_open(self):
         return self._ftd2xx_handle is not None
 
     def close_serial_port(self):
-        try:
-            with native_driver_gate():
-                owner = pending_cleanup(self.port)
-                if owner is not None:
-                    owner.retry_close()
-                self._close_handle()
-        except NativeHandleCleanupError:
-            raise
-        except BaseException as cleanup_error:
-            raise _remember_cleanup(
-                cleanup_error, cleanup_error, self._close_handle, self.port,
-            ) from cleanup_error
+        with diagnostic_operation("native_close", transport="d2xx", port=self.port) as evidence:
+            try:
+                evidence["stage"] = "driver_gate"
+                with native_driver_gate():
+                    evidence["stage"] = "close_handle"
+                    owner = pending_cleanup(self.port)
+                    if owner is not None:
+                        owner.retry_close()
+                    self._close_handle()
+                    evidence["stage"] = "complete"
+            except NativeHandleCleanupError:
+                raise
+            except BaseException as cleanup_error:
+                raise _remember_cleanup(
+                    cleanup_error, cleanup_error, self._close_handle, self.port,
+                ) from cleanup_error
+            finally:
+                evidence["handle_retained"] = self._ftd2xx_handle is not None
+                evidence["cleanup_pending"] = pending_cleanup(self.port) is not None
 
     def _close_handle(self):
         """Close the handle while the caller holds the native driver gate."""

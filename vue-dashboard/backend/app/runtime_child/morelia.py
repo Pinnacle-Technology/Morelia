@@ -24,6 +24,7 @@ from typing import Any
 import structlog
 
 from app.config import get_config
+from app.diagnostic_events import diagnostic_operation
 from app.domain.enums import CommsStatus, DeviceType, SinkType, StreamStatus
 from app.runtime_child.driver import (
     DeviceReport,
@@ -1011,10 +1012,17 @@ class MoreliaRuntime:
     def _stream_port_present(self, stream_index: int) -> bool:
         device_flow = self._manifest.device_flows[stream_index]
         self._check_cancelled()
-        with _database_context(self._database_config):
-            return current_connection_present(
-                device_flow, self._device_type(device_flow), inventory=self._presence_inventory,
-            )
+        with diagnostic_operation(
+            "connection_presence", dataflow_id=getattr(self._manifest, "dataflow_id", None),
+            device_id=device_flow.device_id, stream_index=stream_index,
+            hardware_id=device_flow.hardware_id, port=device_flow.port,
+        ) as evidence:
+            with _database_context(self._database_config):
+                present = current_connection_present(
+                    device_flow, self._device_type(device_flow), inventory=self._presence_inventory,
+                )
+            evidence["present"] = present
+            return present
 
     def _reconstruct_stream(self, stream_index: int):
         """Rebuild one stream's source and sinks for a watchdog recovery restart.
@@ -1446,6 +1454,8 @@ class MoreliaRuntime:
                 failure_threshold=failure.get("threshold"),
                 error_message=failure.get("last_error"),
                 worker_status=worker.get("status"),
+                worker_exitcode=worker.get("exitcode"),
+                hardware_present=recovery.get("hardware_present"),
                 heartbeat_status=heartbeat.get("status"),
                 heartbeat_age_seconds=heartbeat.get("age_sec"),
                 source_read_state=source_read.get("state"),
