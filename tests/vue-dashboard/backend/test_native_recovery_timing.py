@@ -78,7 +78,9 @@ def test_native_first_packet_and_port_release_allow_thirty_seconds(monkeypatch, 
     clock[0] = 154.9
     assert subject._try_reconnect()["action"] == "waiting_for_port_release"
     clock[0] = 155
-    assert subject._try_reconnect()["initiating_failure_reason"] == "port_release_timeout"
+    result = subject._try_reconnect()
+    assert result["initiating_failure_reason"] == "port_release_timeout"
+    assert "30 seconds" in result["error"]
     assert monitor.restart_calls == 0
 
 

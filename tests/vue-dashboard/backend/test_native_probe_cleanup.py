@@ -7,6 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from Morelia.Watchdog.dataflowMonitor import DataFlowMonitor
+from Morelia.Watchdog.watchdog import StreamWatcher
 from app.discovery import ftdi_transport as transport
 from app.discovery import native_scan
 from app.discovery.managed_pods import Pod
@@ -22,6 +24,65 @@ ENDPOINT = {
     "hardware_id": SERIAL, "physical_id": PHYSICAL, "aliases": [ALIAS],
     "address": SERIAL, "transport": "d2xx", "backend": "ftd2xx", "flags": 0,
 }
+
+
+@pytest.mark.parametrize("worker_alive", [None, False, True])
+@pytest.mark.parametrize("presence", [False, True, None])
+def test_native_recovery_probes_present_serial_after_owner_release(usb, monkeypatch, worker_alive, presence):
+    from ftd2xx.ftd2xx import DeviceError
+
+    def unknown_inventory(_index):
+        if presence is None:
+            raise RuntimeError("Native inventory contains unidentified interfaces")
+        return presence
+
+    monitor = DataFlowMonitor(port_resolver=lambda _index: SERIAL,
+                              port_presence_checker=unknown_inventory)
+    pod = Pod(SERIAL, use_d2xx=True, probe=True)
+    worker = SimpleNamespace(is_alive=lambda: worker_alive, exitcode=1) if worker_alive is not None else None
+    monitor.flowgraph = SimpleNamespace(_network=[(pod, [])], _workers=[worker])
+    monitor.snapshot_config = [{"source": {"source_dict": pod.get_dict()}}]
+    restarts = []
+    monkeypatch.setattr(monitor, "restart_one_stream",
+                        lambda index: restarts.append(index) or {"ok": True})
+    monkeypatch.setattr(monitor, "poll_stream_queue_roundtrip", lambda **_kwargs: {"ok": True})
+    subject = StreamWatcher(0, monitor, failure_threshold=3, max_heartbeat_age_sec=10,
+                            interval_sec=1, timeout_sec=5, recovery_policy="automate",
+                            native_transport=True, publish=lambda *_args: None)
+    native_open = transport._open_native_serial
+    requested = []
+
+    def unavailable(serial):
+        requested.append(serial)
+        raise DeviceError("DEVICE_NOT_OPENED")
+
+    monkeypatch.setattr(transport, "_open_native_serial", unavailable)
+    result = subject._try_reconnect()
+    if presence is not True:
+        assert result["action"] == ("port_check_failed" if presence is None else "waiting_for_port")
+        assert result["hardware_present"] is presence
+        assert requested == restarts == []
+        assert usb.opens == 0
+        assert subject._port_release_started_at is None
+        presence = True
+        result = subject._try_reconnect()
+    assert result["action"] == "waiting_for_port_release"
+    assert result["hardware_present"] is True
+    assert restarts == []
+    assert subject._recovery_attempt_count == 0
+    assert requested == ([] if worker is not None else [SERIAL] * 3)
+
+    monkeypatch.setattr(transport, "_open_native_serial", native_open)
+    result = subject._try_reconnect()
+    if worker is not None:
+        assert result["action"] == "waiting_for_port_release"
+        assert usb.opens == 0
+        assert restarts == []
+    else:
+        assert result["action"] == "connection_restored"
+        assert restarts == [0]
+        assert usb.opens == usb.closes == 1
+        assert pod._port is None
 
 
 @pytest.fixture

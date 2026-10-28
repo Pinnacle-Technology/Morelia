@@ -175,10 +175,13 @@ def test_cached_inventory_preserves_ambiguous_identity_errors(monkeypatch, trans
 
 def test_blank_native_descriptor_does_not_prove_absence(monkeypatch):
     install_inventory(monkeypatch, "d2xx", lambda: [{"address": "", "hardware_id": ""}])
+    def unavailable():
+        raise OSError("Windows presence query unavailable")
+    monkeypatch.setattr(connections, "list_windows_usb_endpoints", unavailable)
     inventory = connections.EndpointInventoryCache(clock=Clock())
     with pytest.raises(connections.ConnectionResolutionError) as error:
         observe(flow("d2xx"), inventory)
-    assert error.value.code == "identity_unavailable"
+    assert error.value.code == ("enumeration_failed" if connections.sys.platform == "win32" else "identity_unavailable")
 
 
 def test_cached_endpoint_aliases_cannot_be_changed_by_a_reader(monkeypatch):

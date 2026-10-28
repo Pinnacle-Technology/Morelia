@@ -49,6 +49,11 @@ flask --app app run --debug
 
 ## Operational rules
 
+For USB presence, connection, or recovery errors, inspect the automatic
+[hardware diagnostic events](tools/hardware_diagnostics.md) in the session log.
+They include the inventory used by the backend, exact target identity, failure
+stage, and exception chain.
+
 ### Single owner of hardware
 
 Exactly **one** control-plane process may own a given piece of hardware at a
